@@ -1402,6 +1402,148 @@ class LeftoverTemplateScaffolding(LintRule):
 
 
 # ---------------------------------------------------------------------------
+# SL018 — header-parameter-doc-block
+# ---------------------------------------------------------------------------
+
+@rule
+class HeaderParameterDocBlock(LintRule):
+    """Flag parameter / result documentation blocks in script header
+    comments and disabled $README Insert Text doc steps.
+
+    SL_Core convention: a script's own JSONGetElement calls and
+    HANDLE RESULT JSON construction ARE the parameter/result contract.
+    Header documentation that enumerates field names, types, or shapes
+    (e.g. PARAMETER FORMAT, RESULT JSON, INPUT/OUTPUT, PARAMS, RETURNS)
+    is a second source of truth that drifts the moment the script is
+    modified. Same goes for disabled `Insert Text [ $README ]` doc-block
+    steps — they accumulate stale prose without enforcement.
+
+    The fix is to delete the doc block. Let the script speak for itself.
+
+    Architectural notes that don't enumerate fields (e.g.
+    "ATOMICITY: outer transaction wraps both sub-script calls" or a
+    one-sentence PURPOSE line) are fine — they describe behavior, not
+    contract.
+
+    Team convention 2026-05-15.
+    """
+
+    rule_id = "SL018"
+    name = "header-parameter-doc-block"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    # Substrings (uppercase) that, when starting a header # (comment) Text,
+    # indicate a parameter/result enumeration that should not be there.
+    _BANNED_PREFIXES = (
+        "PARAMETER FORMAT",
+        "PARAMETERS:",
+        "PARAMS:",
+        "RESULT JSON",
+        "RETURN VALUE",
+        "RETURN VALUES",
+        "RETURNS:",
+        "INPUT:",
+        "INPUTS:",
+        "OUTPUT:",
+        "OUTPUTS:",
+        "ARGUMENTS:",
+        "ARGS:",
+    )
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        steps = parse_result.steps
+
+        # Find the boundary between header and body. Header ends at the
+        # first `Loop` step (the BEGIN PSEUDO LOOP). If there's no Loop,
+        # treat the entire script as header (rare — thin wrappers).
+        body_start = len(steps)
+        for i, s in enumerate(steps):
+            if s.get("name", "") == "Loop":
+                body_start = i
+                break
+
+        diagnostics = []
+
+        for i in range(body_start):
+            step = steps[i]
+            name = step.get("name", "")
+
+            # Case 1: # (comment) step with text starting with a banned prefix.
+            if name == "# (comment)":
+                text_el = step.find("Text")
+                if text_el is None or text_el.text is None:
+                    continue
+                txt_stripped = text_el.text.lstrip("# ").strip()
+                if not txt_stripped:
+                    continue
+                upper = txt_stripped.upper()
+                if any(upper.startswith(p) for p in self._BANNED_PREFIXES):
+                    diagnostics.append(Diagnostic(
+                        rule_id=self.rule_id,
+                        severity=sev,
+                        message=(
+                            "Script header contains a parameter/result "
+                            f"documentation block ('{txt_stripped[:60]}...'). "
+                            "SL_Core convention is that the script's own "
+                            "JSONGetElement calls and HANDLE RESULT JSON "
+                            "construction are the contract. Header "
+                            "documentation drifts the moment the script "
+                            "is modified — delete it and let the script "
+                            "speak for itself."
+                        ),
+                        line=i + 1,
+                        fix_hint=(
+                            "Delete this comment step (and any sibling "
+                            "comment steps that continue the same "
+                            "PARAMETER FORMAT / RESULT JSON / INPUT / "
+                            "OUTPUT block). The NOTES section ships "
+                            "intentionally empty in TMPL_NewScript; "
+                            "keep it that way unless there's a genuinely "
+                            "architectural note that doesn't enumerate "
+                            "field names, types, or shapes."
+                        ),
+                    ))
+
+            # Case 2: disabled `Insert Text` step targeting $README — the
+            # legacy doc-block pattern. Flag regardless of content.
+            elif name == "Insert Text":
+                field_el = step.find("Field")
+                if field_el is not None and (field_el.text or "").strip() == "$README":
+                    diagnostics.append(Diagnostic(
+                        rule_id=self.rule_id,
+                        severity=sev,
+                        message=(
+                            "Disabled Insert Text [ $README ] doc-block "
+                            "step found in script header. SL_Core "
+                            "convention deprecated this pattern in favor "
+                            "of inline # (comment) steps. The $README "
+                            "target was a convention from the upstream "
+                            "agentic-fm style guide; it accumulates "
+                            "stale prose because no lint or runtime "
+                            "check enforces alignment with the script's "
+                            "actual JSON shape."
+                        ),
+                        line=i + 1,
+                        fix_hint=(
+                            "Delete the Insert Text [ $README ] step. "
+                            "If a genuinely architectural note is worth "
+                            "preserving (one that doesn't enumerate "
+                            "fields/types/shapes), move it to a # "
+                            "(comment) step in the PURPOSE or NOTES "
+                            "section."
+                        ),
+                    ))
+
+        return diagnostics
+
+
+# ---------------------------------------------------------------------------
 # Helpers for SL014/SL015 (post-Loop section detection)
 # ---------------------------------------------------------------------------
 
