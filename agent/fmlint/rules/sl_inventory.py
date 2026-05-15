@@ -830,3 +830,81 @@ class PjsiwvMustBeWrapped(LintRule):
                 "Exit Loop If [True] / End If."
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# SL011 — no-double-blank-comments
+# ---------------------------------------------------------------------------
+
+@rule
+class NoDoubleBlankComments(LintRule):
+    """Flag runs of 2+ consecutive blank # (comment) steps.
+
+    The TMPL_NewScript templates ship with double-blank lines as visual
+    "insert your code here" markers between sections. A finished script
+    should clean these up — at most one blank line is needed between
+    sections.
+
+    Team convention 2026-05-15.
+
+    A "blank # (comment)" step is one with no <Text> child element
+    (i.e., a self-closing <Step ... name="# (comment)"/>).
+    """
+
+    rule_id = "SL011"
+    name = "no-double-blank-comments"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        diagnostics = []
+        steps = parse_result.steps
+        run_start = None  # index of the first blank in the current run
+        run_len = 0
+        for idx, step in enumerate(steps):
+            if self._is_blank_comment(step):
+                if run_start is None:
+                    run_start = idx
+                run_len += 1
+            else:
+                if run_len >= 2:
+                    diagnostics.append(self._diag(sev, run_start, run_len))
+                run_start = None
+                run_len = 0
+        # Flush trailing run (script ending with consecutive blanks)
+        if run_len >= 2:
+            diagnostics.append(self._diag(sev, run_start, run_len))
+        return diagnostics
+
+    @staticmethod
+    def _is_blank_comment(step) -> bool:
+        if step.get("name", "") != "# (comment)":
+            return False
+        text_el = step.find("Text")
+        if text_el is None:
+            return True
+        # Some converters / scripts emit <Text></Text> for a blank — treat
+        # that as blank too.
+        return not (text_el.text and text_el.text.strip())
+
+    def _diag(self, severity, run_start_idx, run_len):
+        return Diagnostic(
+            rule_id=self.rule_id,
+            severity=severity,
+            message=(
+                f"Run of {run_len} consecutive blank # (comment) steps. "
+                f"The TMPL_NewScript templates ship with double-blank "
+                f"markers to indicate where dev code goes — a finished "
+                f"script should consolidate these to a single blank."
+            ),
+            line=run_start_idx + 1,
+            fix_hint=(
+                f"Delete {run_len - 1} of the consecutive blank # (comment) "
+                "steps so only one blank separator remains between sections."
+            ),
+        )
