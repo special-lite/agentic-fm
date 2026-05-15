@@ -1285,3 +1285,175 @@ class NoCalcAlignmentPadding(LintRule):
                 if flagged_this_step:
                     break  # one diagnostic per step is enough
         return diagnostics
+
+
+# ---------------------------------------------------------------------------
+# Helpers for SL014/SL015 (post-Loop section detection)
+# ---------------------------------------------------------------------------
+
+def _find_last_end_loop(steps) -> int:
+    """Return the index of the LAST End Loop step, or -1 if none."""
+    for i in range(len(steps) - 1, -1, -1):
+        if steps[i].get("name", "") == "End Loop":
+            return i
+    return -1
+
+
+def _has_section_marker_after(steps, after_idx: int, *marker_texts: str) -> bool:
+    """Return True if any # (comment) step after `after_idx` has Text
+    that starts with any of the given marker_texts (case-insensitive)."""
+    upper_markers = tuple(m.upper() for m in marker_texts)
+    for j in range(after_idx + 1, len(steps)):
+        if steps[j].get("name", "") != "# (comment)":
+            continue
+        text_el = steps[j].find("Text")
+        if text_el is None or text_el.text is None:
+            continue
+        txt = text_el.text.strip().upper()
+        if any(txt.startswith(m) for m in upper_markers):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# SL014 — missing-cleanup-section
+# ---------------------------------------------------------------------------
+
+@rule
+class MissingCleanupSection(LintRule):
+    """Flag scripts (with a Loop) that don't have a # CLEANUP section
+    header between End Loop and Exit Script.
+
+    The TMPL_NewScript template includes a CLEANUP section after the
+    pseudo-loop for any post-loop teardown work (closing files,
+    releasing locks, restoring window state, etc.). The section header
+    should always exist even if the section body is empty — it's the
+    scannable indicator that the developer considered cleanup and
+    found nothing needed (vs. forgot the section entirely).
+
+    Team convention 2026-05-15.
+    """
+
+    rule_id = "SL014"
+    name = "missing-cleanup-section"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        steps = parse_result.steps
+
+        # Only fires on scripts that have a Loop (excludes thin wrappers).
+        if not any(s.get("name", "") == "Loop" for s in steps):
+            return []
+
+        end_loop_idx = _find_last_end_loop(steps)
+        if end_loop_idx < 0:
+            return []  # has Loop but no matching End Loop — different problem
+
+        if _has_section_marker_after(steps, end_loop_idx, "CLEANUP"):
+            return []
+
+        return [Diagnostic(
+            rule_id=self.rule_id,
+            severity=sev,
+            message=(
+                "Script has a pseudo-loop but no '# CLEANUP' section "
+                "header after End Loop. The TMPL_NewScript template "
+                "always includes the section header (even if the section "
+                "body is empty) so reviewers can confirm cleanup was "
+                "considered."
+            ),
+            line=end_loop_idx + 1,
+            fix_hint=(
+                "Add three # (comment) steps after the END PSEUDO LOOP "
+                "marker: '===' row, 'CLEANUP' label, '---' row. Leave "
+                "the section body empty if no post-loop cleanup is "
+                "needed."
+            ),
+        )]
+
+
+# ---------------------------------------------------------------------------
+# SL015 — missing-display-notification-section
+# ---------------------------------------------------------------------------
+
+@rule
+class MissingDisplayNotificationSection(LintRule):
+    """Flag scripts (with a Loop) that don't have a # DISPLAY NOTIFICATION
+    / ERROR section header between End Loop and Exit Script.
+
+    The TMPL_NewScript template includes a DISPLAY NOTIFICATION /
+    ERROR section after CLEANUP for user-facing dialog / notification
+    output. Two valid populations:
+
+    1. Scripts that DO display dialogs directly: the section contains
+       the canonical If [not IsEmpty ($errorMessage)] dialog-build +
+       If [not IsEmpty ($displayMessageOrNotificationObject)] +
+       Perform Script COM_DisplayMessageDialogOrNotification logic.
+
+    2. Scripts that do NOT display dialogs (sub-scripts, server-side
+       workers, etc.): the section contains a single
+       '# No user notifications in this script.' comment.
+
+    Either way, the section header should exist. Missing the section
+    means the developer didn't consider whether the script needs user
+    feedback.
+
+    Team convention 2026-05-15.
+    """
+
+    rule_id = "SL015"
+    name = "missing-display-notification-section"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        steps = parse_result.steps
+
+        if not any(s.get("name", "") == "Loop" for s in steps):
+            return []
+
+        end_loop_idx = _find_last_end_loop(steps)
+        if end_loop_idx < 0:
+            return []
+
+        # Look for the DISPLAY NOTIFICATION section header. Accept variants:
+        # "DISPLAY NOTIFICATION", "DISPLAY NOTIFICATION / ERROR",
+        # "DISPLAY NOTIFICATIONS / ERROR".
+        if _has_section_marker_after(steps, end_loop_idx, "DISPLAY NOTIFICATION"):
+            return []
+
+        return [Diagnostic(
+            rule_id=self.rule_id,
+            severity=sev,
+            message=(
+                "Script has a pseudo-loop but no '# DISPLAY NOTIFICATION / "
+                "ERROR' section header after End Loop. The TMPL_NewScript "
+                "template always includes this section — either populated "
+                "with the canonical dialog-build logic (for scripts that "
+                "display user feedback directly) or with a single '# No "
+                "user notifications in this script.' comment (for "
+                "sub-scripts / server-side workers)."
+            ),
+            line=end_loop_idx + 1,
+            fix_hint=(
+                "Add three # (comment) steps after the CLEANUP section: "
+                "'===' row, 'DISPLAY NOTIFICATION / ERROR' label, '---' "
+                "row. Then either: (a) the canonical If "
+                "[not IsEmpty ($errorMessage)] build-display-object + "
+                "If [not IsEmpty ($displayMessageOrNotificationObject)] "
+                "Perform Script COM_DisplayMessageDialogOrNotification "
+                "logic, OR (b) a single '# No user notifications in this "
+                "script.' comment."
+            ),
+        )]
