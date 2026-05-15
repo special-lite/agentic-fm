@@ -1457,3 +1457,110 @@ class MissingDisplayNotificationSection(LintRule):
                 "script.' comment."
             ),
         )]
+
+
+# ---------------------------------------------------------------------------
+# SL016 — post-loop-section-ordering
+# ---------------------------------------------------------------------------
+
+@rule
+class PostLoopSectionOrdering(LintRule):
+    """Flag post-pseudo-loop sections that appear out of canonical order.
+
+    The TMPL_NewScript canonical order after End Loop is:
+
+        CLEANUP → DISPLAY NOTIFICATION / ERROR → HANDLE RESULT & EXIT
+
+    Why this matters: cleanup work (closing extra windows, returning to
+    the original layout, restoring window state) MUST happen before any
+    user-facing dialog is shown, so the dialog appears with the right
+    visual context. Likewise, the dialog must be shown BEFORE the script
+    exits, since Exit Script tears down the runtime state.
+
+    Team convention 2026-05-15.
+
+    SL014 / SL015 enforce that the section headers exist; this rule
+    enforces they appear in the canonical order. The three rules can
+    fire independently — a script can pass SL014 + SL015 (markers exist)
+    but fail SL016 (order is wrong).
+
+    Sections that are absent from the script don't break ordering — only
+    the ones that ARE present must be in the right order relative to
+    each other.
+    """
+
+    rule_id = "SL016"
+    name = "post-loop-section-ordering"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    # Canonical order of post-loop sections. Each tuple is (display
+    # name, list of accepted Text-startswith prefixes).
+    _CANONICAL_ORDER = (
+        ("CLEANUP", ("CLEANUP",)),
+        ("DISPLAY NOTIFICATION / ERROR", ("DISPLAY NOTIFICATION",)),
+        ("HANDLE RESULT & EXIT", ("HANDLE RESULT",)),
+    )
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        steps = parse_result.steps
+
+        if not any(s.get("name", "") == "Loop" for s in steps):
+            return []  # thin wrapper exempt
+
+        end_loop_idx = _find_last_end_loop(steps)
+        if end_loop_idx < 0:
+            return []
+
+        # Find the FIRST occurrence of each section marker after End Loop.
+        section_idx = {name: None for name, _ in self._CANONICAL_ORDER}
+        for j in range(end_loop_idx + 1, len(steps)):
+            if steps[j].get("name", "") != "# (comment)":
+                continue
+            text_el = steps[j].find("Text")
+            if text_el is None or text_el.text is None:
+                continue
+            txt = text_el.text.strip().upper()
+            for name, prefixes in self._CANONICAL_ORDER:
+                if section_idx[name] is not None:
+                    continue  # already recorded
+                if any(txt.startswith(p) for p in prefixes):
+                    section_idx[name] = j
+                    break  # this comment step matched one section; move on
+
+        # Walk the canonical order and verify each present marker's
+        # position is greater than the previous present marker's position.
+        present = [(name, section_idx[name]) for name, _ in self._CANONICAL_ORDER if section_idx[name] is not None]
+        diagnostics = []
+        for i in range(len(present) - 1):
+            cur_name, cur_idx = present[i]
+            nxt_name, nxt_idx = present[i + 1]
+            if cur_idx > nxt_idx:
+                # 'cur' is supposed to come BEFORE 'nxt' but appears AFTER
+                diagnostics.append(Diagnostic(
+                    rule_id=self.rule_id,
+                    severity=sev,
+                    message=(
+                        f"Post-loop section '{cur_name}' appears AFTER "
+                        f"'{nxt_name}'. Canonical order is "
+                        f"CLEANUP → DISPLAY NOTIFICATION / ERROR → "
+                        f"HANDLE RESULT & EXIT. Cleanup work (closing "
+                        f"extra windows, returning to the original "
+                        f"layout, restoring window state) must happen "
+                        f"BEFORE any user-facing dialog is shown; "
+                        f"dialogs must be shown BEFORE the script exits."
+                    ),
+                    line=cur_idx + 1,
+                    fix_hint=(
+                        f"Move the '{cur_name}' section to before the "
+                        f"'{nxt_name}' section in the script."
+                    ),
+                ))
+                # One diagnostic per inversion is enough — keep going
+                # to catch additional misorderings.
+        return diagnostics
