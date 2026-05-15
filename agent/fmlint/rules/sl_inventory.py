@@ -1194,3 +1194,94 @@ class HandleResultExitCanonical(LintRule):
         """Normalize whitespace for comparing calculations — FM is loose
         about spaces around operators and parens."""
         return " ".join(s.split())
+
+
+# ---------------------------------------------------------------------------
+# SL013 — no-calc-alignment-padding
+# ---------------------------------------------------------------------------
+
+@rule
+class NoCalcAlignmentPadding(LintRule):
+    """Flag Calculation contents with vertical-alignment padding (runs of
+    2+ consecutive interior spaces).
+
+    Some FM developers format JSONSetElement (and similar multi-line
+    calcs) with extra spaces to vertically align the `;` separators and
+    the `JSONString`/`JSONObject` type tokens, e.g.:
+
+        JSONSetElement ( "{}"
+            ; [ "scriptResult"        ; "ERROR"                                                              ; JSONString ]
+            ; [ "scriptResultMessage" ; $errorMessage                                                        ; JSONString ]
+            ; [ "eventObject"         ; If ( IsEmpty ( $eventObject ) ; CreateEventObjectFm ; $eventObject ) ; JSONObject ]
+        )
+
+    Team convention 2026-05-15 — use single spaces between tokens, no
+    alignment padding:
+
+        JSONSetElement ( "{}"
+            ; [ "scriptResult" ; "ERROR" ; JSONString ]
+            ; [ "scriptResultMessage" ; $errorMessage ; JSONString ]
+            ; [ "eventObject" ; If ( IsEmpty ( $eventObject ) ; CreateEventObjectFm ; $eventObject ) ; JSONObject ]
+        )
+
+    Alignment padding hurts diffs (any change to a long line forces the
+    alignment to re-pad the whole block), reading speed (eyes scan
+    long blank spaces), and the value of the leading tab indentation
+    (the actual code starts well after the visual indent).
+
+    Heuristic: any Calculation whose CDATA text contains a line where —
+    after stripping leading whitespace (tabs/spaces, legitimate
+    indentation) — there are 2+ consecutive interior spaces, is
+    flagged. False positives could occur on multi-space string literals
+    (e.g., \"hello  world\") but those are rare; the diagnostic message
+    explains the false-positive case so devs can recognize it.
+    """
+
+    rule_id = "SL013"
+    name = "no-calc-alignment-padding"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        diagnostics = []
+        for idx, step in enumerate(parse_result.steps):
+            flagged_this_step = False
+            for calc in step.iter("Calculation"):
+                if calc.text is None or not calc.text:
+                    continue
+                # Walk lines, look for 2+ consecutive interior spaces
+                for line in calc.text.split("\n"):
+                    stripped = line.lstrip(" \t")
+                    if "  " in stripped:
+                        diagnostics.append(Diagnostic(
+                            rule_id=self.rule_id,
+                            severity=sev,
+                            message=(
+                                "Calculation contains vertical-alignment "
+                                "padding (2+ consecutive interior spaces). "
+                                "Team convention 2026-05-15 — use single "
+                                "spaces between tokens, no alignment. "
+                                "Alignment padding hurts diffs and "
+                                "readability."
+                            ),
+                            line=idx + 1,
+                            fix_hint=(
+                                "Collapse runs of multiple spaces to single "
+                                "spaces in the calculation. Note: legitimate "
+                                "multi-space string literals (e.g., "
+                                "\"hello  world\") will also trigger — if "
+                                "that's the case, disable this rule on the "
+                                "specific occurrence or treat the warning "
+                                "as informational."
+                            ),
+                        ))
+                        flagged_this_step = True
+                        break
+                if flagged_this_step:
+                    break  # one diagnostic per step is enough
+        return diagnostics
