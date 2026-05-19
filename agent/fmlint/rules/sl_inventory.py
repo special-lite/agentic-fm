@@ -1952,3 +1952,165 @@ class JsonKeyNoLeadingUnderscore(LintRule):
                 ))
 
         return diagnostics
+
+
+# ---------------------------------------------------------------------------
+# SL020 — psos-must-use-calculated-self-recursion
+# ---------------------------------------------------------------------------
+
+@rule
+class PsosMustUseCalculatedSelfRecursion(LintRule):
+    """Flag Perform Script on Server steps that don't use the canonical
+    `Get ( ScriptName )` self-recursion pattern.
+
+    The SL_Core convention (matching `TMPL_NewScript - Transactions`) is:
+
+        <Step name="Perform Script on Server" id="164">
+            <Calculated>
+                <Calculation><![CDATA[Get ( ScriptName )]]></Calculation>
+            </Calculated>
+            <WaitForCompletion state="True"/>
+            <Calculation><![CDATA[Get ( ScriptParameter )]]></Calculation>
+        </Step>
+
+    Why Calculated + `Get ( ScriptName )` and not From-list + hardcoded
+    script reference:
+
+      - **Rename-safe.** `Get ( ScriptName )` dynamically resolves at
+        runtime. A hardcoded `<Script id="N" name="..."/>` reference is
+        a fixed pointer — FM does update the name attribute when the
+        script is renamed, but the reference remains a fragile direct
+        link rather than a "whoever I am, dispatch myself" pattern.
+      - **Self-recursion convention.** SL_Core's PSOS pattern is
+        "this script PSOS-dispatches itself when called from the
+        client." Cross-script PSOS dispatch isn't a convention SL_Core
+        uses — call the other script directly via Perform Script
+        instead.
+      - **Template alignment.** Every script generated from
+        `TMPL_NewScript - Transactions` uses Calculated mode. Anything
+        in From-list mode is either: (a) a pre-template script that
+        hasn't been refactored, (b) drift from manual editing, or
+        (c) a genuine cross-script PSOS call — in which case the rule
+        prompts you to reconsider whether PSOS is the right mechanism.
+
+    The rule flags two distinct failure modes:
+
+      1. **Empty PSOS** — no Calculated child AND no Script reference
+         (or `<Script id="0" name=""/>` placeholder). Silently no-ops
+         when invoked. Hard bug. Same silent-failure class as the
+         Pattern A polarity bug (SL003).
+
+      2. **From-list PSOS** — `<Script id="N" name="X"/>` with real
+         script reference. Non-canonical; rename-fragile; misaligned
+         with the template. Should be migrated to Calculated mode with
+         `Get ( ScriptName )`.
+
+    **How these bugs get authored:**
+
+    Three pathways in the SL_Core history:
+
+      (a) The pre-`tx_perform_script_on_server` SaXML → fmxmlsnippet
+          converter silently dropped the PSOS script reference and
+          parameter calc during round-trip, producing empty PSOS steps.
+          Closed 2026-05-15 by the converter fix. Pre-fix-era scripts
+          may still carry the bug.
+      (b) An author starts a PSOS step in FM Pro from the step list and
+          forgets to fill in Specify... Empty PSOS results.
+      (c) An author picks "From list" mode and selects the current
+          script as the target (instead of using Calculated mode with
+          `Get ( ScriptName )`). Functionally works but is non-canonical.
+
+    Team convention 2026-05-19.
+    """
+
+    rule_id = "SL020"
+    name = "psos-must-use-calculated-self-recursion"
+    category = "sl_fork"
+    default_severity = Severity.WARNING
+    formats = {"xml"}
+    tier = 1
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok or not parse_result.steps:
+            return []
+        sev = self.severity(config)
+        steps = parse_result.steps
+        diagnostics = []
+
+        for i, step in enumerate(steps):
+            if step.get("name", "") != "Perform Script on Server":
+                continue
+
+            # Canonical: Calculated mode with non-empty calc body.
+            calculated_el = step.find("Calculated")
+            if calculated_el is not None:
+                calc_el = calculated_el.find("Calculation")
+                calc_text = (calc_el.text or "").strip() if calc_el is not None else ""
+                if calc_text:
+                    continue  # Calculated mode, non-empty → canonical, OK
+
+            # Non-canonical or broken — check which.
+            script_el = step.find("Script")
+            script_id = ""
+            script_name = ""
+            if script_el is not None:
+                script_id = (script_el.get("id") or "").strip()
+                script_name = (script_el.get("name") or "").strip()
+
+            has_real_ref = (script_id and script_id != "0" and script_name)
+
+            if has_real_ref:
+                # Non-canonical: from-list mode with real reference.
+                diagnostics.append(Diagnostic(
+                    rule_id=self.rule_id,
+                    severity=sev,
+                    message=(
+                        f"Perform Script on Server uses From-list mode with "
+                        f"a hardcoded script reference (`{script_name}` "
+                        f"id={script_id}). SL_Core convention is Calculated "
+                        f"mode with `Get ( ScriptName )` for rename-safe "
+                        f"self-recursion (matches TMPL_NewScript - "
+                        f"Transactions). If this is genuine cross-script "
+                        f"PSOS dispatch (uncommon in SL_Core), reconsider "
+                        f"whether you actually want PSOS or a regular "
+                        f"sub-script call via Perform Script."
+                    ),
+                    line=i + 1,
+                    fix_hint=(
+                        "Replace the step body with the canonical pattern:\n"
+                        "  <Calculated><Calculation><![CDATA[Get ( ScriptName )]]></Calculation></Calculated>\n"
+                        "  <WaitForCompletion state=\"True\"/>\n"
+                        "  <Calculation><![CDATA[Get ( ScriptParameter )]]></Calculation>\n"
+                        "In FM Pro Script Workspace, open the step's "
+                        "Specify... dialog → switch from \"From list\" to "
+                        "\"Calculated...\" → enter Get ( ScriptName ) → "
+                        "set parameter to Get ( ScriptParameter )."
+                    ),
+                ))
+            else:
+                # Broken: no script reference at all — silent no-op.
+                diagnostics.append(Diagnostic(
+                    rule_id=self.rule_id,
+                    severity=sev,
+                    message=(
+                        "Perform Script on Server step has no script to "
+                        "call (empty Calculated body and no Script "
+                        "reference). The step will silently no-op when "
+                        "invoked — same silent-failure class as the "
+                        "Pattern A polarity bug. This is typically caused "
+                        "by either the pre-2026-05-15 SaXML→fmxmlsnippet "
+                        "converter dropping the script ref, or an author "
+                        "starting a PSOS step in FM Pro and forgetting to "
+                        "fill in the Specify... dialog."
+                    ),
+                    line=i + 1,
+                    fix_hint=(
+                        "Replace the step body with the canonical SL "
+                        "self-recursion pattern:\n"
+                        "  <Calculated><Calculation><![CDATA[Get ( ScriptName )]]></Calculation></Calculated>\n"
+                        "  <WaitForCompletion state=\"True\"/>\n"
+                        "  <Calculation><![CDATA[Get ( ScriptParameter )]]></Calculation>"
+                    ),
+                ))
+
+        return diagnostics
