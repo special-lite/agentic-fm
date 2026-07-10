@@ -65,6 +65,7 @@ class LintRule:
     formats = set()
     tier = 1
     requires_confirmation = False
+    applies_to_calc = False  # opt in to run against bare calcs (custom functions) via lint_calc
 
     def check_xml(self, parse_result, catalog, context, config):
         """Check XML format. Returns list of Diagnostic."""
@@ -200,6 +201,33 @@ class LintRunner:
         if fmt is None:
             fmt = detect_format(content)
         return self.lint(content, fmt=fmt, source=str(path))
+
+    def lint_calc(self, calc_text: str, source: str = "") -> LintResult:
+        """Lint a bare calculation (e.g. a custom-function definition) with the
+        rules that opt in via `applies_to_calc`. Wraps the calc as a one-step
+        snippet and reuses the XML path, so a CF body is checked the same way a
+        script step's calculation is."""
+        safe = calc_text.replace("]]>", "]]]]><![CDATA[>")  # keep CDATA well-formed
+        xml = (
+            '<fmxmlsnippet type="FMObjectList">'
+            '<Step enable="True" id="0" name="Set Variable">'
+            '<Calculation><![CDATA[' + safe + ']]></Calculation>'
+            '</Step></fmxmlsnippet>'
+        )
+        parse_result = parse_xml_string(xml)
+        result = LintResult(source=source)
+        for cls in get_rules():
+            if not getattr(cls, "applies_to_calc", False):
+                continue
+            if not self.config.is_enabled(cls.rule_id):
+                continue
+            if cls.tier > self.tier:
+                continue
+            diags = cls().check_xml(parse_result, self.catalog, self.context, self.config) or []
+            result.diagnostics.extend(diags)
+        severity_order = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2, Severity.HINT: 3}
+        result.diagnostics.sort(key=lambda d: (d.line, severity_order.get(d.severity, 9)))
+        return result
 
     def _active_rules(self, fmt: str) -> list:
         """Get instantiated rules that apply to this format and tier."""

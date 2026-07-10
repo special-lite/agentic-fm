@@ -2259,6 +2259,9 @@ def _sl021_scan_literal(lit):
             if nxt == "(":                  # function call, not a bare identifier
                 pending = None
                 continue
+            if t.endswith("."):             # alias/table qualifier ("V.") — the
+                pending = None              # column itself is injected next (& GetFN)
+                continue
             if lw in _SL021_SQL_KEYWORDS:
                 if lw in _SL021_TABLE_INTRO:
                     pending, last_intro, intro_word = "table", "table", t.upper()
@@ -2273,16 +2276,124 @@ def _sl021_scan_literal(lit):
     return viols
 
 
+def _sl021_blank_strings(text):
+    """Return `text` with FM string-literal interiors blanked to spaces (quotes and
+    overall length preserved) so identifier/assignment scanning ignores string
+    content (e.g. an '=' or a `~var` written inside a literal)."""
+    out = []
+    n = len(text)
+    i = 0
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            if c == "\\" and i + 1 < n:
+                out.append("  ")
+                i += 2
+                continue
+            out.append('"' if c == '"' else " ")
+            if c == '"':
+                in_str = False
+            i += 1
+        else:
+            out.append(c)
+            if c == '"':
+                in_str = True
+            i += 1
+    return "".join(out)
+
+
+_SL021_VAR_RE = re.compile(r'(?:\$\$|\$|~)[A-Za-z_]\w*')
+
+
+def _sl021_rhs(text, eq_idx):
+    """Assignment RHS starting just after the '=' at eq_idx, up to the enclosing
+    ';' or closing bracket (respects strings and nested ()/[])."""
+    n = len(text)
+    i = eq_idx + 1
+    start = i
+    depth = 0
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c in "([":
+                depth += 1
+            elif c in ")]":
+                if depth == 0:
+                    return text[start:i]
+                depth -= 1
+            elif c == ";" and depth == 0:
+                return text[start:i]
+        i += 1
+    return text[start:i]
+
+
+def _sl021_var_assignments(calc_text):
+    """Map {var_name: rhs_expr} for `~var` / `$var` / `$$var` assignments (Let
+    bindings, Set Variable). String interiors are blanked first so an '=' inside
+    a literal isn't mistaken for an assignment."""
+    blanked = _sl021_blank_strings(calc_text)
+    out = {}
+    for m in _SL021_VAR_RE.finditer(blanked):
+        j = m.end()
+        while j < len(blanked) and blanked[j] in " \t\r\n":
+            j += 1
+        if (j < len(blanked) and blanked[j] == "="
+                and (j + 1 >= len(blanked) or blanked[j + 1] != "=")):
+            out[m.group(0)] = _sl021_rhs(calc_text, j)
+    return out
+
+
+def _sl021_referenced_vars(expr):
+    """Variable names referenced in an expression (ignoring string interiors)."""
+    return set(_SL021_VAR_RE.findall(_sl021_blank_strings(expr)))
+
+
+def _sl021_collect_literals(expr, assignments, visited):
+    """String literals that flow into `expr`, following `~var`/`$var` assignments
+    — so SQL assembled in a Let variable before ExecuteSQL (the SL_Core lookup-CF
+    pattern) is scanned, not just inline first-args. Visited-guarded against cycles."""
+    lits = list(_sl021_string_literals(expr))
+    for var in _sl021_referenced_vars(expr):
+        if var in assignments and var not in visited:
+            visited.add(var)
+            lits.extend(_sl021_collect_literals(assignments[var], assignments, visited))
+    return lits
+
+
+# FileMaker's SQL system tables (FileMaker_Tables / FileMaker_Fields / etc.) have
+# fixed, un-renameable names — GetTN()/GetFN() cannot produce them, so a query
+# against them is legitimately hardcoded. Exempt any query that references one.
+_SL021_SYSTEM_TABLE_RE = re.compile(r'\bFileMaker_\w+', re.IGNORECASE)
+
+
 def _sl021_find_hardcoded(calc_text):
-    """De-duplicated [(identifier, keyword), ...] across every ExecuteSQL /
-    ExecuteSQLe call's first argument in a calculation."""
+    """De-duplicated [(identifier, keyword), ...] hardcoded in the SQL of every
+    ExecuteSQL / ExecuteSQLe call in a calculation. SQL is taken from the call's
+    first argument AND from any `~var`/`$var` it references, so SQL built up in a
+    Let variable (the SL_Core lookup-CF pattern) is covered as well as inline SQL.
+    Queries against FileMaker system tables (FileMaker_*) are exempt."""
     if not calc_text:
         return []
+    assignments = _sl021_var_assignments(calc_text)
     found = []
     seen = set()
     for m in _SL021_EXECSQL_RE.finditer(calc_text):
         arg = _sl021_first_arg(calc_text, m.end() - 1)
-        for lit in _sl021_string_literals(arg):
+        lits = _sl021_collect_literals(arg, assignments, set())
+        # System-metadata query (FileMaker_Tables/Fields/…) — un-protectable, skip.
+        if any(_SL021_SYSTEM_TABLE_RE.search(lit) for lit in lits):
+            continue
+        for lit in lits:
             for ident, kw in _sl021_scan_literal(lit):
                 key = (ident.lower(), kw)
                 if key not in seen:
@@ -2309,6 +2420,9 @@ class SqlMustProtectIdentifiers(LintRule):
     Manage-Database rename can't silently rot the query. Mandatory (ERROR): a
     hardcoded identifier is a silent-failure class — ExecuteSQL returns "?"/empty
     with no error once the literal name no longer resolves.
+
+    Applies to scripts AND custom-function definitions (via `lint_calc` /
+    `--custom-functions`), since much SL_Core SQL lives inside lookup CFs.
     """
 
     rule_id = "SL021"
@@ -2317,6 +2431,7 @@ class SqlMustProtectIdentifiers(LintRule):
     default_severity = Severity.ERROR
     formats = {"xml", "hr"}
     tier = 1
+    applies_to_calc = True
 
     def _message(self, found):
         ids = ", ".join(f'"{i}" (after {k})' for i, k in found)

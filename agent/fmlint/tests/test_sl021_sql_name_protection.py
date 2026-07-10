@@ -14,6 +14,7 @@ _ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from agent.fmlint.engine import LintRunner            # noqa: E402
 from agent.fmlint.config import LintConfig            # noqa: E402
 from agent.fmlint.types import Severity               # noqa: E402
 from agent.fmlint.formats.xml_parser import parse_xml_string        # noqa: E402
@@ -131,6 +132,79 @@ class TestSL021Engine(unittest.TestCase):
             if any(fn in d.message for fn in ("GetFN", "GetTN", "GTFN", "ExecuteSQLe"))
         ]
         self.assertEqual(noisy, [], f"C003 must whitelist protective CFs: {[d.message for d in noisy]}")
+
+
+# GetConfigValue-style CF: SQL assembled in a Let variable via List(), alias-qualified,
+# every identifier injected with GetFN/GetTN. Must be clean.
+PROTECTED_CF = '''
+Let ( [
+    ~configName = ~configName ;
+    ~sqlQuery =
+        List (
+            "SELECT V." & GetFN ( ConfigValue::Value ; True ) ;
+            "FROM " & GetTN ( ConfigValue::_id ; True ) & " V" ;
+            "JOIN " & GetTN ( Config::_id ; True ) & " C" ;
+            "ON V." & GetFN ( ConfigValue::_id_config ; True ) & " = C." & GetFN ( Config::_id ; True ) ;
+            "WHERE C." & GetFN ( Config::Name ; True ) & " = ?"
+        ) ;
+    ~result = ExecuteSQL ( ~sqlQuery ; "" ; "" ; ~configName )
+] ;
+    ~result
+)
+'''
+
+
+class TestSL021LetVarAndCF(unittest.TestCase):
+    """SQL assembled in a Let variable (the lookup-CF pattern) + alias handling."""
+
+    def test_let_var_hardcoded_flagged(self):
+        calc = 'Let ( [ ~q = "SELECT FileName FROM DatabaseFile" ] ; ExecuteSQL ( ~q ; "" ; "" ) )'
+        idents = _idents(calc)
+        self.assertIn("FileName", idents)
+        self.assertIn("DatabaseFile", idents)
+
+    def test_let_var_protected_is_clean(self):
+        self.assertEqual(_sl021_find_hardcoded(PROTECTED_CF), [])
+
+    def test_alias_qualifier_not_flagged(self):
+        # "SELECT V." & GetFN(...) — the V. alias prefix must not be flagged (column injected)
+        calc = ('ExecuteSQL ( "SELECT V." & GetFN ( T::F ; True ) & " FROM " '
+                '& GetTN ( T::F ; True ) & " V" ; "" ; "" )')
+        self.assertEqual(_sl021_find_hardcoded(calc), [])
+
+    def test_alias_qualified_hardcoded_field_flagged(self):
+        # a hardcoded qualified column (dot NOT at the end) is still a violation
+        calc = 'ExecuteSQL ( "SELECT V.FileName FROM " & GetTN ( T::F ; True ) & " V" ; "" ; "" )'
+        self.assertIn("V.FileName", _idents(calc))
+
+    def test_nested_let_var_following(self):
+        calc = ('Let ( [ ~t = "FROM DatabaseFile" ; '
+                '~q = "SELECT " & GetFN ( T::F ; True ) & " " & ~t ] ; '
+                'ExecuteSQL ( ~q ; "" ; "" ) )')
+        self.assertIn("DatabaseFile", _idents(calc))
+
+    def test_filemaker_system_tables_exempt(self):
+        # FileMaker_Fields/_Tables etc. are fixed system tables — un-protectable, not flagged.
+        calc = ('ExecuteSQL ( "SELECT FieldName FROM FileMaker_Fields '
+                'WHERE TableName = ?" ; "" ; "" ; "InventoryItem" )')
+        self.assertEqual(_sl021_find_hardcoded(calc), [])
+
+
+class TestSL021LintCalc(unittest.TestCase):
+    """The lint_calc path used by --custom-functions."""
+
+    def _calc(self, calc):
+        return LintRunner(project_root=_ROOT, config=LintConfig.load(_ROOT)).lint_calc(calc)
+
+    def test_hardcoded_cf_body_is_error(self):
+        res = self._calc('Let ( [ ~q = "SELECT FileName FROM DatabaseFile" ] ; ExecuteSQL ( ~q ; "" ; "" ) )')
+        sl = [d for d in res.diagnostics if d.rule_id == "SL021"]
+        self.assertTrue(sl, "SL021 should fire on a hardcoded CF body")
+        self.assertEqual(sl[0].severity, Severity.ERROR)
+
+    def test_protected_cf_body_clean(self):
+        res = self._calc(PROTECTED_CF)
+        self.assertEqual([d for d in res.diagnostics if d.rule_id == "SL021"], [])
 
 
 if __name__ == "__main__":
