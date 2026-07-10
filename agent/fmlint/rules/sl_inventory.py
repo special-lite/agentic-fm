@@ -2114,3 +2114,366 @@ class PsosMustUseCalculatedSelfRecursion(LintRule):
                 ))
 
         return diagnostics
+
+
+# ---------------------------------------------------------------------------
+# SL021 — sql-hardcoded-identifier
+# ---------------------------------------------------------------------------
+#
+# FileMaker's ExecuteSQL uses a SQL-92 subset (SELECT-only). The SL_Core
+# convention is that EVERY table and field name inside an ExecuteSQL /
+# ExecuteSQLe query is injected via the GetTN() / GetFN() / GTFN() custom
+# functions rather than written as a literal identifier, so the query survives
+# a Manage-Database rename:
+#
+#   ExecuteSQLe ( "SELECT " & GetFN ( TO::Field ; True )
+#               & " FROM "  & GetTN ( TO::Field ; True )
+#               & " WHERE " & GetFN ( TO::Key ; True ) & " = ?" ; "" ; "" ; $id )
+#
+# A literal identifier baked into the SQL string ("... FROM DatabaseFile ...")
+# is a silent-rot bug: renaming the table/field in Manage Database leaves the
+# hardcoded SQL pointing at a name that no longer exists, and ExecuteSQL returns
+# "?" / empty with NO error. This rule flags it deterministically.
+#
+# Heuristic (intentionally conservative — designed for zero false positives on
+# protected code):
+#   * Only the FIRST ARGUMENT of an ExecuteSQL/ExecuteSQLe call is scanned (the
+#     SQL query). Later arguments (field/row separators, bind values) are ignored.
+#   * Only FM string LITERALS in that argument are scanned. Anything built by
+#     concatenation ( & GetFN(...) & ) is a runtime injection and is correct.
+#   * Within a SINGLE literal, a bareword that directly follows an
+#     identifier-introducing SQL keyword (FROM/JOIN -> table; SELECT/WHERE/AND/
+#     OR/ON/HAVING/BY/DISTINCT/WHEN/... -> field) is a hardcoded identifier. In
+#     protected code the keyword sits at the END of a literal (the identifier is
+#     the next concatenated GetFN/GetTN), so nothing follows it in that literal
+#     and nothing is flagged — which is why injected names AND table aliases do
+#     not false-positive.
+#   Known limitation (false negatives, by design): SQL assembled in a separate
+#   Let variable, or an identifier buried inside a SQL function call, is not
+#   detected. The rule targets the direct inline pattern SL_Core actually uses.
+
+_SL021_EXECSQL_RE = re.compile(r'\bExecuteSQL\w*\s*\(', re.IGNORECASE)
+
+_SL021_SQL_KEYWORDS = frozenset("""
+select all distinct from where group by having order asc desc
+join inner left right full outer cross natural on using
+union intersect except and or not in exists between like escape is null
+as case when then else end cast coalesce nullif substr
+true false unknown offset fetch first next last rows row only limit
+for with over partition
+""".split())
+
+# Keywords after which the next bareword (in the same literal) is an identifier
+# that SL_Core requires be injected via GetTN()/GetFN()/GTFN().
+_SL021_TABLE_INTRO = frozenset({"from", "join"})
+_SL021_FIELD_INTRO = frozenset({
+    "select", "distinct", "where", "and", "or", "on", "having", "by",
+    "when", "then", "else",
+})
+
+_SL021_SQL_STRING_RE = re.compile(r"'(?:[^']|'')*'")
+_SL021_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*|,|\*|\?|\d+(?:\.\d+)?|\(|\)|\S")
+
+
+def _sl021_first_arg(text, open_idx):
+    """Return the first-argument substring of a call whose '(' is at open_idx.
+
+    Respects FM string literals (with backslash escapes) and nested parens; the
+    argument ends at the first top-level ';' or the matching ')'.
+    """
+    n = len(text)
+    i = open_idx + 1
+    start = i
+    depth = 1
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i]
+            elif c == ";" and depth == 1:
+                return text[start:i]
+        i += 1
+    return text[start:i]
+
+
+def _sl021_string_literals(expr):
+    """Extract the contents of FM string literals ("...") from an expression."""
+    lits = []
+    n = len(expr)
+    i = 0
+    while i < n:
+        if expr[i] == '"':
+            j = i + 1
+            buf = []
+            while j < n:
+                c = expr[j]
+                if c == "\\" and j + 1 < n:
+                    buf.append(expr[j + 1])
+                    j += 2
+                    continue
+                if c == '"':
+                    break
+                buf.append(c)
+                j += 1
+            lits.append("".join(buf))
+            i = j + 1
+        else:
+            i += 1
+    return lits
+
+
+def _sl021_scan_literal(lit):
+    """Return [(identifier, introducing_keyword), ...] hardcoded in one literal."""
+    sql = _SL021_SQL_STRING_RE.sub(" ", lit)  # drop 'string values'
+    toks = list(_SL021_TOKEN_RE.finditer(sql))
+    viols = []
+    pending = None          # None | 'table' | 'field'  (reset per literal)
+    last_intro = None
+    intro_word = ""
+    for idx, m in enumerate(toks):
+        t = m.group(0)
+        if t == ",":
+            pending = last_intro            # continue a SELECT / list within the literal
+            continue
+        if t in ("*", "?") or t[0].isdigit():
+            pending = None                  # position filled by a value, not an identifier
+            continue
+        if t in ("(", ")"):
+            continue
+        if t[0].isalpha() or t[0] == "_":
+            lw = t.lower()
+            nxt = toks[idx + 1].group(0) if idx + 1 < len(toks) else ""
+            if nxt == "(":                  # function call, not a bare identifier
+                pending = None
+                continue
+            if t.endswith("."):             # alias/table qualifier ("V.") — the
+                pending = None              # column itself is injected next (& GetFN)
+                continue
+            if lw in _SL021_SQL_KEYWORDS:
+                if lw in _SL021_TABLE_INTRO:
+                    pending, last_intro, intro_word = "table", "table", t.upper()
+                elif lw in _SL021_FIELD_INTRO:
+                    pending, last_intro, intro_word = "field", "field", t.upper()
+                continue
+            if pending:                     # bareword in an identifier position
+                viols.append((t, intro_word))
+                pending = None
+            continue
+        # any other single char (operators = < > || etc.) — ignore
+    return viols
+
+
+def _sl021_blank_strings(text):
+    """Return `text` with FM string-literal interiors blanked to spaces (quotes and
+    overall length preserved) so identifier/assignment scanning ignores string
+    content (e.g. an '=' or a `~var` written inside a literal)."""
+    out = []
+    n = len(text)
+    i = 0
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            if c == "\\" and i + 1 < n:
+                out.append("  ")
+                i += 2
+                continue
+            out.append('"' if c == '"' else " ")
+            if c == '"':
+                in_str = False
+            i += 1
+        else:
+            out.append(c)
+            if c == '"':
+                in_str = True
+            i += 1
+    return "".join(out)
+
+
+_SL021_VAR_RE = re.compile(r'(?:\$\$|\$|~)[A-Za-z_]\w*')
+
+
+def _sl021_rhs(text, eq_idx):
+    """Assignment RHS starting just after the '=' at eq_idx, up to the enclosing
+    ';' or closing bracket (respects strings and nested ()/[])."""
+    n = len(text)
+    i = eq_idx + 1
+    start = i
+    depth = 0
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c in "([":
+                depth += 1
+            elif c in ")]":
+                if depth == 0:
+                    return text[start:i]
+                depth -= 1
+            elif c == ";" and depth == 0:
+                return text[start:i]
+        i += 1
+    return text[start:i]
+
+
+def _sl021_var_assignments(calc_text):
+    """Map {var_name: rhs_expr} for `~var` / `$var` / `$$var` assignments (Let
+    bindings, Set Variable). String interiors are blanked first so an '=' inside
+    a literal isn't mistaken for an assignment."""
+    blanked = _sl021_blank_strings(calc_text)
+    out = {}
+    for m in _SL021_VAR_RE.finditer(blanked):
+        j = m.end()
+        while j < len(blanked) and blanked[j] in " \t\r\n":
+            j += 1
+        if (j < len(blanked) and blanked[j] == "="
+                and (j + 1 >= len(blanked) or blanked[j + 1] != "=")):
+            out[m.group(0)] = _sl021_rhs(calc_text, j)
+    return out
+
+
+def _sl021_referenced_vars(expr):
+    """Variable names referenced in an expression (ignoring string interiors)."""
+    return set(_SL021_VAR_RE.findall(_sl021_blank_strings(expr)))
+
+
+def _sl021_collect_literals(expr, assignments, visited):
+    """String literals that flow into `expr`, following `~var`/`$var` assignments
+    — so SQL assembled in a Let variable before ExecuteSQL (the SL_Core lookup-CF
+    pattern) is scanned, not just inline first-args. Visited-guarded against cycles."""
+    lits = list(_sl021_string_literals(expr))
+    for var in _sl021_referenced_vars(expr):
+        if var in assignments and var not in visited:
+            visited.add(var)
+            lits.extend(_sl021_collect_literals(assignments[var], assignments, visited))
+    return lits
+
+
+# FileMaker's SQL system tables (FileMaker_Tables / FileMaker_Fields / etc.) have
+# fixed, un-renameable names — GetTN()/GetFN() cannot produce them, so a query
+# against them is legitimately hardcoded. Exempt any query that references one.
+_SL021_SYSTEM_TABLE_RE = re.compile(r'\bFileMaker_\w+', re.IGNORECASE)
+
+
+def _sl021_find_hardcoded(calc_text):
+    """De-duplicated [(identifier, keyword), ...] hardcoded in the SQL of every
+    ExecuteSQL / ExecuteSQLe call in a calculation. SQL is taken from the call's
+    first argument AND from any `~var`/`$var` it references, so SQL built up in a
+    Let variable (the SL_Core lookup-CF pattern) is covered as well as inline SQL.
+    Queries against FileMaker system tables (FileMaker_*) are exempt."""
+    if not calc_text:
+        return []
+    assignments = _sl021_var_assignments(calc_text)
+    found = []
+    seen = set()
+    for m in _SL021_EXECSQL_RE.finditer(calc_text):
+        arg = _sl021_first_arg(calc_text, m.end() - 1)
+        lits = _sl021_collect_literals(arg, assignments, set())
+        # System-metadata query (FileMaker_Tables/Fields/…) — un-protectable, skip.
+        if any(_SL021_SYSTEM_TABLE_RE.search(lit) for lit in lits):
+            continue
+        for lit in lits:
+            for ident, kw in _sl021_scan_literal(lit):
+                key = (ident.lower(), kw)
+                if key not in seen:
+                    seen.add(key)
+                    found.append((ident, kw))
+    return found
+
+
+_SL021_FIX_HINT = (
+    "Build the query with GetFN()/GetTN()/GTFN() for every identifier, e.g.:\n"
+    "  ExecuteSQLe (\n"
+    '      "SELECT " & GetFN ( TO::Field ; True )\n'
+    '    & " FROM "  & GetTN ( TO::Field ; True )\n'
+    '    & " WHERE " & GetFN ( TO::KeyField ; True ) & " = ?"\n'
+    '    ; "" ; "" ; $value )'
+)
+
+
+@rule
+class SqlMustProtectIdentifiers(LintRule):
+    """SL021 — ExecuteSQL must not hardcode table/field names.
+
+    SL_Core requires SQL identifiers be injected via GetTN()/GetFN()/GTFN() so a
+    Manage-Database rename can't silently rot the query. Mandatory (ERROR): a
+    hardcoded identifier is a silent-failure class — ExecuteSQL returns "?"/empty
+    with no error once the literal name no longer resolves.
+
+    Applies to scripts AND custom-function definitions (via `lint_calc` /
+    `--custom-functions`), since much SL_Core SQL lives inside lookup CFs.
+    """
+
+    rule_id = "SL021"
+    name = "sql-hardcoded-identifier"
+    category = "sl_fork"
+    default_severity = Severity.ERROR
+    formats = {"xml", "hr"}
+    tier = 1
+    applies_to_calc = True
+
+    def _message(self, found):
+        ids = ", ".join(f'"{i}" (after {k})' for i, k in found)
+        return (
+            f"ExecuteSQL query hardcodes {len(found)} table/field "
+            f"identifier(s): {ids}. SL_Core requires SQL table and field names "
+            f"be built with GetTN() / GetFN() / GTFN() (never written as SQL "
+            f'literals) so they survive a Manage-Database rename — a hardcoded '
+            f'name silently returns "?"/empty once it no longer resolves.'
+        )
+
+    def check_xml(self, parse_result, catalog, context, config):
+        if not parse_result.ok:
+            return []
+        sev = self.severity(config)
+        diags = []
+        for idx, step in enumerate(parse_result.steps):
+            for calc in step.iter("Calculation"):
+                found = _sl021_find_hardcoded(calc.text or "")
+                if found:
+                    diags.append(Diagnostic(
+                        rule_id=self.rule_id,
+                        severity=sev,
+                        message=self._message(found),
+                        line=idx + 1,
+                        fix_hint=_SL021_FIX_HINT,
+                    ))
+        return diags
+
+    def check_hr(self, lines, catalog, context, config):
+        sev = self.severity(config)
+        diags = []
+        for ln in lines:
+            if ln.is_comment or not ln.bracket_content:
+                continue
+            found = _sl021_find_hardcoded(ln.bracket_content)
+            if found:
+                diags.append(Diagnostic(
+                    rule_id=self.rule_id,
+                    severity=sev,
+                    message=self._message(found),
+                    line=ln.line_number,
+                    fix_hint=_SL021_FIX_HINT,
+                ))
+        return diags

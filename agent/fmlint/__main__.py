@@ -9,6 +9,8 @@ Examples:
     python3 -m agent.fmlint agent/sandbox/
     python3 -m agent.fmlint --format json agent/sandbox/MyScript.xml
     python3 -m agent.fmlint --tier 2 --disable N003,D002 agent/sandbox/
+    python3 -m agent.fmlint --custom-functions           # lint CF defs (SL021 SQL check)
+    python3 -m agent.fmlint --custom-functions path/to/cf.txt
 """
 
 import argparse
@@ -112,6 +114,61 @@ def _print_json(results):
     print(json.dumps(output, indent=2))
 
 
+def _run_custom_functions(runner, args, project_root):
+    """Lint custom-function definitions with calc rules (e.g. SL021), then exit.
+
+    Discovers CF calc text (default: agent/xml_parsed/custom_functions_sanitized),
+    scans only CFs that contain an ExecuteSQL call, and prints only those with
+    findings."""
+    spec = args.custom_functions
+    if spec == "__default__":
+        if not project_root:
+            print("Error: --custom-functions needs a path (no project root found)",
+                  file=sys.stderr)
+            sys.exit(1)
+        cf_root = project_root / "agent" / "xml_parsed" / "custom_functions_sanitized"
+    else:
+        cf_root = Path(spec)
+    if not cf_root.exists():
+        print(f"Error: {cf_root} does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    cf_files = [cf_root] if cf_root.is_file() else sorted(cf_root.rglob("*.txt"))
+    results = []
+    scanned = 0
+    for f in cf_files:
+        try:
+            content = f.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "executesql" not in content.lower():
+            continue
+        scanned += 1
+        res = runner.lint_calc(content, source=str(f))
+        if res.diagnostics:
+            results.append(res)
+
+    if args.format == "json":
+        _print_json(results)
+    else:
+        for res in results:
+            _print_result(res, args.quiet)
+        flagged = sum(1 for r in results if not r.ok)
+        print(f"\n{'─' * 60}")
+        print(f"  {scanned} custom function(s) with ExecuteSQL scanned: ", end="")
+        if scanned == 0:
+            print("none found")
+        elif flagged == 0:
+            print("ALL PASSED")
+        else:
+            print(f"{flagged} FAILED")
+        print()
+
+    has_errors = any(not r.ok for r in results)
+    has_warnings = any(r.warnings for r in results)
+    sys.exit(1 if has_errors else (2 if has_warnings else 0))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="FMLint — FileMaker code linter"
@@ -166,20 +223,31 @@ def main():
         action="store_true",
         help="Only show errors and warnings",
     )
+    parser.add_argument(
+        "--custom-functions",
+        nargs="?",
+        const="__default__",
+        default=None,
+        help="Lint custom-function definitions with calc rules (SL021) instead of "
+             "scripts. Optional path; defaults to agent/xml_parsed/custom_functions_sanitized. "
+             "Only CFs containing an ExecuteSQL call are scanned; only CFs with findings print.",
+    )
 
     args = parser.parse_args()
 
     # Resolve paths
     project_root = _resolve_project_root()
 
+    cf_mode = args.custom_functions is not None
+
     target = Path(args.path) if args.path else None
-    if target is None and project_root:
+    if target is None and not cf_mode and project_root:
         target = project_root / "agent" / "sandbox"
-    elif target is None:
+    elif target is None and not cf_mode:
         print("Error: no file or directory specified", file=sys.stderr)
         sys.exit(1)
 
-    if not target.exists():
+    if target is not None and not target.exists():
         print(f"Error: {target} does not exist", file=sys.stderr)
         sys.exit(1)
 
@@ -207,6 +275,10 @@ def main():
         context_path=context_path,
         config=config,
     )
+
+    # Custom-function mode: lint CF definitions with calc rules (e.g. SL021), then exit.
+    if cf_mode:
+        _run_custom_functions(runner, args, project_root)
 
     # Collect and lint files
     files = _collect_files(target)
