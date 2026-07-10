@@ -137,7 +137,7 @@
     "C003": {
       "enabled": true,
       "severity": "warning",
-      "extra_known_functions": []
+      "extra_known_functions": ["GetFN", "GetTN", "GTFN", "ExecuteSQLe"]
     },
 
     "C006": { "enabled": true, "severity": "error" },
