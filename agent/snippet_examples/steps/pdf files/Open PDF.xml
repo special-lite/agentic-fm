@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="246" name="Open PDF">
+    <Option state="False"/>
+    <UniversalPathList>$path</UniversalPathList>
+    <OpenPDFFile>
+      <PDFSaveType>File</PDFSaveType>
+    </OpenPDFFile>
+  </Step>
+</fmxmlsnippet>
+<!-- Opens an existing PDF file that can then be modified with the other PDF Files script steps. Only one PDF may be open at a time. -->
+<!-- PDFSaveType (the "From" selector): "File" opens from a file path; "Target" opens from a container field or variable. (UI label "Source" → serialized "Target".) -->
+<!-- File mode: <UniversalPathList>$path</UniversalPathList> holds the source path; password (encrypted PDF) is <OpenPDFFile><OpenPassword><Calculation><![CDATA["password"]]></Calculation></OpenPassword></OpenPDFFile>. -->
+<!-- Target mode (From: Source): replace UniversalPathList with the container ref — <Text/><Field>$source_variable</Field> (variable) or <Text/><Field table="" id="0" name=""/> (field) — and set <PDFSaveType>Target</PDFSaveType>. -->
+<!-- Option state: "True" when a source password is specified, "False" otherwise. -->
+<!-- Required: PDFSaveType + its source. -->
+<!-- New in FileMaker 26.0. AUTHORITATIVE — captured from developer-configured steps (id 246), all modes including File+path+password and Target+container+password. VERIFIED: Option (True when a password is set), UniversalPathList (File-mode path), OpenPDFFile, PDFSaveType (File|Target), OpenPassword (works in BOTH modes), and the <Text/>+<Field> container form. Structurally identical to Append PDF (id 244). -->
+<!-- See https://help.claris.com/en/pro-help/content/open-pdf.html -->

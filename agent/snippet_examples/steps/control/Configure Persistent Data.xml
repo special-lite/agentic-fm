@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="238" name="Configure Persistent Data">
+    <Option state="False"/>
+    <Value>
+      <Calculation><![CDATA["value"]]></Calculation>
+    </Value>
+    <InstanceId>
+      <Calculation><![CDATA["instance_id"]]></Calculation>
+    </InstanceId>
+    <Name>persistent_key</Name>
+  </Step>
+</fmxmlsnippet>
+<!-- Option state: "False" = Set/update mode (store Value). "True" = Delete Entry mode. -->
+<!-- Required: Name. Name is a LITERAL text key (not a calculation) — it cannot be empty. -->
+<!-- Optional: Instance ID (Calculation). Multiple entries may share a Name, distinguished by Instance ID. -->
+<!-- Mutually exclusive: Value (Calculation) and Delete Entry (Option state="True"). In delete mode OMIT the <Value> element entirely; deleting a non-existent entry returns error 10. -->
+<!-- Delete-mode template:
+       <Step enable="True" id="238" name="Configure Persistent Data">
+         <Option state="True"/>
+         <InstanceId>
+           <Calculation><![CDATA["instance_id"]]></Calculation>
+         </InstanceId>
+         <Name>persistent_key</Name>
+       </Step>
+-->
+<!-- The persistent data store survives session end and file close. Read entries back with GetPersistentData(); enumerate Instance IDs with ListPersistentDataIDs(). New in FileMaker 26.0. -->
+<!-- FileMaker also emits a cosmetic <DisableStepCollapsed state="False"/> editor-state element; it is not a parameter and is omitted from this template. -->
+<!-- See https://help.claris.com/en/pro-help/content/configure-persistent-data.html -->

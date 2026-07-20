@@ -2,34 +2,52 @@
 <fmxmlsnippet type="FMObjectList">
   <Step enable="True" id="87" name="Show Custom Dialog">
     <Title>
-      <Calculation><![CDATA[]]></Calculation>
+      <Calculation><![CDATA["Title"]]></Calculation>
     </Title>
     <Message>
-      <Calculation><![CDATA[]]></Calculation>
+      <Calculation><![CDATA["Message"]]></Calculation>
     </Message>
+    <Height>
+      <Calculation><![CDATA[100]]></Calculation>
+    </Height>
+    <Width>
+      <Calculation><![CDATA[300]]></Calculation>
+    </Width>
+    <DistanceFromTop>
+      <Calculation><![CDATA[200]]></Calculation>
+    </DistanceFromTop>
+    <DistanceFromLeft>
+      <Calculation><![CDATA[500]]></Calculation>
+    </DistanceFromLeft>
     <Buttons>
       <Button CommitState="True">
-        <Calculation><![CDATA[]]></Calculation>
+        <Calculation><![CDATA["Default Button"]]></Calculation>
       </Button>
       <Button CommitState="False">
-        <Calculation><![CDATA[]]></Calculation>
+        <Calculation><![CDATA["Button 2"]]></Calculation>
       </Button>
       <Button CommitState="False">
-        <Calculation><![CDATA[]]></Calculation>
+        <Calculation><![CDATA["Button 4"]]></Calculation>
       </Button>
     </Buttons>
     <InputFields>
-      <InputField UsePasswordCharacter="True">
-        <Field>$input</Field>
+      <InputField UsePasswordCharacter="False">
+        <Field table="Admin" id="17" name="Industry"/>
         <Label>
-          <Calculation><![CDATA[]]></Calculation>
+          <Calculation><![CDATA["Label 1"]]></Calculation>
         </Label>
       </InputField>
       <InputField UsePasswordCharacter="False">
-        <Field table="" id="0" name=""/>
+        <Field>$variable_input2</Field>
+        <Label>
+          <Calculation><![CDATA["Label 2"]]></Calculation>
+        </Label>
       </InputField>
-      <InputField UsePasswordCharacter="False">
-        <Field table="" id="0" name=""/>
+      <InputField UsePasswordCharacter="True">
+        <Field>$variable_input3</Field>
+        <Label>
+          <Calculation><![CDATA["Label 3"]]></Calculation>
+        </Label>
       </InputField>
     </InputFields>
   </Step>

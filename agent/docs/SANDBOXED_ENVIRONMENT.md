@@ -36,6 +36,9 @@ command -v osascript &>/dev/null && echo "OSASCRIPT_AVAILABLE" || echo "NO_OSASC
 curl -s -o /dev/null -w "%{http_code}" http://localhost:8765/health 2>/dev/null || echo "NO_COMPANION_LOCAL"
 curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:8765/health 2>/dev/null || echo "NO_COMPANION_DOCKER"
 
+# Is the optional AgenticFM plug-in usable? (one call to the companion broker)
+curl -s --max-time 5 http://localhost:8765/health 2>/dev/null | grep -q '"usable":true' && echo "PLUGIN_USABLE" || echo "PLUGIN_ABSENT_OR_OSS_ONLY"
+
 # Is Rust/Cargo available? (needed to compile fm-xml-export-exploder on Linux)
 command -v cargo &>/dev/null && echo "CARGO_AVAILABLE" || echo "NO_CARGO"
 
@@ -55,6 +58,8 @@ Based on the results, classify your environment:
 | `uname` = Darwin, no `osascript` | **macOS sandbox** (e.g. Seatbelt) | Full-access path below |
 | `uname` = Linux, host reachable | **Sandboxed with host access** | Full-access path below |
 | `uname` = Linux, host not reachable | **Isolated sandbox** | Limited path below |
+
+**Plug-in (optional enhancement):** if the `PLUGIN_USABLE` probe above succeeds, the commercial AgenticFM plug-in is installed, reachable, and licensed — prefer it per `agent/docs/PLUGIN_INTEGRATION.md`. On containerized or host-isolated agents, detection still comes through the companion's `/health` (it runs where it can see the plug-in), but **direct** plug-in access requires the plug-in's network-exposed mode (remote access on, `0.0.0.0` / `:8766`); otherwise route through the companion's `/plugin/<path>` proxy. The plug-in is never required — if the probe fails, continue on the pure OSS path.
 
 ---
 

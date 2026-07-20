@@ -3,7 +3,7 @@
   <Step enable="True" id="117" name="Execute SQL">
     <NoInteract state="True"/>
     <Profile QueryType="Query" flags="0" password="" UserName="" dsn="" FieldDelimiter="&#9;" IsPredefined="-1" FieldNameRow="0" DataType="ODBC">
-      <Query>$sql_statement</Query>
+      <Query>SELECT a, b FROM table WHERE a=1</Query>
     </Profile>
   </Step>
 </fmxmlsnippet>

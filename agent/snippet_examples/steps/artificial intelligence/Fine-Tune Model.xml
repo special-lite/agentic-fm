@@ -4,20 +4,20 @@
     <Option state="True"/>
     <UniversalPathList type="Embedded"/>
     <Text/>
-    <Table id="0" name=""/>
-    <Field>$variable</Field>
+    <Table id="1065097" name="Products"/>
+    <Field>$response_target</Field>
     <FineTuneLLM>
       <AccountName>
-        <Calculation><![CDATA["account_name"]]></Calculation>
+        <Calculation><![CDATA["account"]]></Calculation>
       </AccountName>
       <FineTuneBaseModelName>
-        <Calculation><![CDATA["base_model"]]></Calculation>
+        <Calculation><![CDATA["model"]]></Calculation>
       </FineTuneBaseModelName>
       <Parameters>
-        <Calculation><![CDATA["parameters"]]></Calculation>
+        <Calculation><![CDATA["Fine-Tune-Parameters"]]></Calculation>
       </Parameters>
       <DataSource>DataTable</DataSource>
-      <Field table="" id="0" name=""/>
+      <Field table="Products" id="30" name="Name"/>
     </FineTuneLLM>
   </Step>
 </fmxmlsnippet>

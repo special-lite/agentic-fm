@@ -1,0 +1,18 @@
+{
+  "_comment": "Installed third-party modules whose objects are zero-inbound INSIDE the solution but are still live — they are invoked externally (OData / fmurlscript / a companion app) or managed by the module itself. trace.py 'dead' lists any unreferenced match under a separate MODULE category instead of flagging it dead, so a module's objects are never mistaken for your solution's dead code.",
+  "_usage": "These are SHIPPED DEFAULTS. To add your own modules (e.g. InspectorPro, OttoFMS, a fmurlscript integration), copy this file to 'modules.json' (same folder) and add entries there — your file is merged over these defaults by 'label', so you do not need to re-declare agentic-fm. Matching is by object NAME first (folder-independent, so reorganising the Script Workspace folders does not break it); 'folder_contains' is only a secondary hint. A match on ANY of name_prefixes / name_exact / folder_contains tags the object. For fields, a module's TABLE name is matched too (via name_exact / name_prefixes), so listing an installed tool's table name tags every field in that table at once.",
+  "_example_entry": {
+    "label": "InspectorPro",
+    "name_prefixes": ["INSP"],
+    "name_exact": ["[Settings] InspectorPro"],
+    "folder_contains": ["InspectorPro", "INSP"]
+  },
+  "modules": [
+    {
+      "label": "agentic-fm",
+      "name_prefixes": ["AGFM", "Agentic-fm"],
+      "name_exact": ["Explode XML", "Push Context", "Get agentic-fm path"],
+      "folder_contains": ["agentic-fm"]
+    }
+  ]
+}

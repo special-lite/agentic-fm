@@ -9,48 +9,51 @@
     <Restore state="True"/>
     <UniversalPathList type="Reference"/>
     <Text/>
-    <Field table="" id="0" name=""/>
+    <Field>$response</Field>
     <LLMRequestWithTools>
       <AccountName>
-        <Calculation><![CDATA["account_name"]]></Calculation>
+        <Calculation><![CDATA["account"]]></Calculation>
       </AccountName>
       <Model>
         <Calculation><![CDATA["model"]]></Calculation>
       </Model>
       <UserPrompt>
-        <Calculation><![CDATA["prompt"]]></Calculation>
+        <Calculation><![CDATA["user-prompt"]]></Calculation>
       </UserPrompt>
       <Instructions>
-        <Calculation><![CDATA["instructions"]]></Calculation>
+        <Calculation><![CDATA["Instructions"]]></Calculation>
       </Instructions>
-      <Field type="Messages">$variable</Field>
-      <SlidingWindowVariable>$variable</SlidingWindowVariable>
+      <Field type="Messages">$Messages</Field>
+      <SlidingWindowVariable IncludeToolCalls="1">$Save_Message_History_To</SlidingWindowVariable>
       <SlidingWindowMessageCount>
-        <Calculation><![CDATA[1]]></Calculation>
+        <Calculation><![CDATA[$count]]></Calculation>
       </SlidingWindowMessageCount>
       <SlidingWindowVariableRepetition>
-        <Calculation><![CDATA[2]]></Calculation>
+        <Calculation><![CDATA[1]]></Calculation>
       </SlidingWindowVariableRepetition>
       <ToolDefinitions>
-        <Calculation><![CDATA["tool_definitions"]]></Calculation>
+        <Calculation><![CDATA["Tool_Definitions"]]></Calculation>
       </ToolDefinitions>
-      <Field type="ToolCalls">$variable</Field>
+      <Field type="ToolCalls">$Tool_Calls_from_Model</Field>
       <Temperature>
-        <Calculation><![CDATA["temperature"]]></Calculation>
+        <Calculation><![CDATA["Temperature"]]></Calculation>
       </Temperature>
       <Parameters>
-        <Calculation><![CDATA["parameters"]]></Calculation>
+        <Calculation><![CDATA["Parameters"]]></Calculation>
       </Parameters>
       <WebScript>
         <ObjectName>
-          <Calculation><![CDATA[$object]]></Calculation>
+          <Calculation><![CDATA[$object_name]]></Calculation>
         </ObjectName>
         <FunctionName>
-          <Calculation><![CDATA["jsFunctionName"]]></Calculation>
+          <Calculation><![CDATA[$function_name]]></Calculation>
         </FunctionName>
-        <WebScriptParameters Count="1">
+        <WebScriptParameters Count="2">
           <P>
-            <Calculation><![CDATA["jsParameter"]]></Calculation>
+            <Calculation><![CDATA[$parameter1]]></Calculation>
+          </P>
+          <P>
+            <Calculation><![CDATA[$parameter2]]></Calculation>
           </P>
         </WebScriptParameters>
       </WebScript>

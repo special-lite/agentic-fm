@@ -1,0 +1,19 @@
+{
+  "_comment": "Canonical companion server config. Copy to companion.json (gitignored) and edit. Every field is optional; anything omitted falls back to built-in defaults (bind 127.0.0.1, port 8765, advertise local.hub, no idle shutdown). See agent/docs/COMPANION_SERVER.md.",
+  "companion": {
+    "bind_host": "127.0.0.1",
+    "port": 8765,
+    "advertise_host": "local.hub",
+    "idle_timeout_seconds": 0,
+    "behaviors": {
+      "watch_import_log": false
+    }
+  },
+  "users": {
+    "jsmith": {
+      "repo_path": "/Users/jsmith/GITs/agentic-fm",
+      "companion_host": "192.168.1.42",
+      "companion_port": 8765
+    }
+  }
+}

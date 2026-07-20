@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="240" name="Insert Image Captions in Found Set">
+    <Field table="" id="0" name=""/>
+    <LLMBulkEmbedding>
+      <AccountName>
+        <Calculation><![CDATA["account_name"]]></Calculation>
+      </AccountName>
+      <Model>
+        <Calculation><![CDATA["model"]]></Calculation>
+      </Model>
+      <Field table="" id="0" name=""/>
+      <Overwrite/>
+      <ContinueOnError/>
+      <Parameters>
+        <Calculation><![CDATA["parameters"]]></Calculation>
+      </Parameters>
+    </LLMBulkEmbedding>
+  </Step>
+</fmxmlsnippet>
+<!-- For every record in the found set, sends an image from a source field to an image-captioning model and inserts the returned caption into a target field. -->
+<!-- Account Name (required): configured AI account. Model (required): see FileMaker technical specifications. Source Field (required): container field holding the images — the <Field> INSIDE <LLMBulkEmbedding>. Target Field (required): text field for the caption results — the <Field> sibling BEFORE <LLMBulkEmbedding>. -->
+<!-- Optional: Overwrite (Replace target contents), ContinueOnError (Continue on error), Parameters. Overwrite and ContinueOnError are flag elements: present = on, absent = off. -->
+<!-- Parameters JSON keys: MaxRecPerCall (1-500, default 20), MaxRetryPerWorker (1-100, default 5), RetryOnError (0 | 1, default 1). -->
+<!-- New in FileMaker 26.0. AUTHORITATIVE — captured from a developer-configured step (id 240). LLMBulkEmbedding children AccountName / Model / Field (source) / Overwrite / ContinueOnError / Parameters, and the target <Field> sibling, are VERIFIED live. NOTE: unlike the sibling "Insert Embedding in Found Set" (id 216), this step has **no ShowSummary** option. -->
+<!-- See https://help.claris.com/en/pro-help/content/insert-image-captions-in-found-set.html -->

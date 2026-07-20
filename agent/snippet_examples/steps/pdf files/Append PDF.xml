@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="244" name="Append PDF">
+    <Option state="False"/>
+    <UniversalPathList>$path</UniversalPathList>
+    <AppendPDFFile>
+      <PDFSaveType>File</PDFSaveType>
+    </AppendPDFFile>
+  </Step>
+</fmxmlsnippet>
+<!-- Appends PDF pages to the file opened by Open PDF or created by Create PDF. A PDF must already be open or this step returns error 829. -->
+<!-- PDFSaveType (the "From" selector): "File" appends from a file path; "Target" appends from a container field or variable. (Note: the UI label is "Source", but FM serializes it as "Target".) -->
+<!-- File mode: <UniversalPathList>$path</UniversalPathList> holds the source file path; the password (if the source PDF is encrypted) is <AppendPDFFile><OpenPassword><Calculation><![CDATA["password"]]></Calculation></OpenPassword></AppendPDFFile>. -->
+<!-- Target mode (From: Source): replace UniversalPathList with the container ref — for a variable <Text/><Field>$source_variable</Field>, for a field <Text/><Field table="" id="0" name=""/> — and set <PDFSaveType>Target</PDFSaveType>. -->
+<!-- Option state: "True" when a source password is specified (encrypted PDF), "False" otherwise. -->
+<!-- Required: PDFSaveType + its source (UniversalPathList in File mode, or the <Field> container in Target mode). -->
+<!-- New in FileMaker 26.0. AUTHORITATIVE — captured from developer-configured steps (id 244), both File and Target modes. VERIFIED: Option, UniversalPathList, AppendPDFFile, PDFSaveType (File|Target), OpenPassword, and the <Text/>+<Field> container form. -->
+<!-- See https://help.claris.com/en/pro-help/content/append-pdf.html -->

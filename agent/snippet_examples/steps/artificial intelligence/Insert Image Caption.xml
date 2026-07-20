@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="241" name="Insert Image Caption">
+    <Field table="" id="0" name=""/>
+    <LLMEmbedding>
+      <AccountName>
+        <Calculation><![CDATA["account_name"]]></Calculation>
+      </AccountName>
+      <Model>
+        <Calculation><![CDATA["model"]]></Calculation>
+      </Model>
+      <InputText>
+        <Calculation><![CDATA["input"]]></Calculation>
+      </InputText>
+    </LLMEmbedding>
+  </Step>
+</fmxmlsnippet>
+<!-- Sends an image to an image-captioning model and inserts the returned caption into a field or variable. Supported only with the Claris AI Model Server provider; the Account Name must reference an account configured (via Configure AI Account) with a Custom model provider endpoint. -->
+<!-- Account Name (required): name of the configured AI account. Model (required): see FileMaker technical specifications. Input (required): expression returning the image data in container format — serialized as <InputText> despite being an image. Target (required): field or variable to receive the caption. -->
+<!-- Target: the <Field> sibling BEFORE <LLMEmbedding>. For a field: <Field table="" id="0" name=""/>. For a variable: <Text/><Field>$variable</Field>. When omitted, the active field is used. -->
+<!-- New in FileMaker 26.0. AUTHORITATIVE — captured from a developer-configured step (id 241). LLMEmbedding children AccountName / Model / InputText and the Target <Field> sibling (field form and <Text/>+<Field>$var variable form) are all VERIFIED live. Same LLMEmbedding container as the sibling Insert Embedding step (id 215). -->
+<!-- See https://help.claris.com/en/pro-help/content/insert-image-caption.html -->

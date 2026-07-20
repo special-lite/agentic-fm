@@ -2,38 +2,27 @@
 <fmxmlsnippet type="FMObjectList">
   <Step enable="True" id="161" name="Insert from Device">
     <InsertFrom value="Camera"/>
-    <Field table="" id="0" name=""/>
     <DeviceOptions>
       <Camera choice="Back"/>
       <Resolution choice="Full"/>
+      <LightMode choice="Auto"/>
     </DeviceOptions>
   </Step>
 </fmxmlsnippet>
+<!-- Re-captured 2026-06-27 on FM Pro 26.0.1 (adds LightMode; current FM omits the <Field> when no target is set). -->
 <!-- InsertFrom value: "Camera" | "Video Camera" | "Microphone" | "Photo Library" | "Music Library" | "Barcode" | "Signature" -->
-<!-- Camera choice: "Back" | "Front". Applies to Camera, Video Camera, and Barcode (with ScanFrom type="Camera"). -->
-<!-- Resolution choice: "Full" | "Large" | "Medium" | "Small". Applies to Camera, Video Camera, and Barcode (with ScanFrom type="Camera"). -->
-<!-- Required: Field (target container field, or text field for barcodes). -->
-<!-- DeviceOptions children vary by InsertFrom type (see below). -->
-<!-- FileMaker Go only; not supported on Pro, WebDirect, Server, Cloud, Data API, or CWP. -->
-
-<!-- Camera: Camera, Resolution -->
-
-<!-- Music Library: (no DeviceOptions) -->
-
-<!-- Photo Library: (no DeviceOptions) -->
-
-<!-- Video Camera: Camera, Resolution, MaxDuration, StartImmediately -->
-<!-- MaxDuration state: "True" enables max duration with Calculation child (seconds). "False" no limit. -->
-<!-- StartImmediately state: "True" starts recording immediately. "False" waits for user. -->
-
+<!-- Field (optional, before DeviceOptions): target container field <Field table id name/>, or <Field>$variable</Field>. Omitted ⇒ active container field. -->
+<!-- DeviceOptions children vary by InsertFrom type (present-driven; each round-trips by presence): -->
+<!-- Camera: Camera, Resolution, LightMode -->
+<!-- Camera choice: "Back" | "Front". Resolution choice: "Full" | "Large" | "Medium" | "Small". LightMode choice: "Auto" | "On" | "Off". -->
+<!-- Music Library / Photo Library: (no DeviceOptions) -->
+<!-- Video Camera: Camera, Resolution, LightMode, MaxDuration, StartImmediately -->
 <!-- Microphone: MaxDuration, StartImmediately -->
-
-<!-- Barcode: ScanFrom, Camera (when ScanFrom type="Camera"), Resolution (when ScanFrom type="Camera"), Barcodes -->
-<!-- ScanFrom type: "Camera" (scan with device camera) | "Field" (scan from container field; has Field child element). -->
-<!-- Barcodes types: numeric bitmask for enabled barcode types. "4194303" (0x3FFFFF) = all 22 types enabled. -->
+<!-- MaxDuration state: "True" with a direct <Calculation> child (seconds) | "False". StartImmediately state: "True" | "False". -->
+<!-- Barcode: ScanFrom, then (ScanFrom type="Camera" ⇒ Camera/Resolution/LightMode) or (ScanFrom type="Field" ⇒ a <Field> source ref), then Barcodes. -->
+<!-- ScanFrom type: "Camera" | "Field". Barcodes types: numeric bitmask. "4194303" (0x3FFFFF) = all 22 types enabled. -->
 <!-- Barcode types (bit positions): Code 39, Code 93, Code 128, EAN-8, EAN-13, EAN/UPC Composite, GS1 2-Digit Add-On, GS1 5-Digit Add-On, GS1 DataBar Expanded, GS1 DataBar (RSS), Interleaved 2 of 5, ISBN-10 (from EAN-13), ISBN-13 (from EAN-13), QR Code, UPC-A, UPC-E, Codabar, PDF417, ITF-14, Aztec, Data Matrix, GS1 DataBar Limited. -->
-
-<!-- Signature: Title (Calculation), Message (Calculation), Prompt (Calculation), Presentation -->
-<!-- Presentation choice: "Full Screen" | "Overlay" | "Embedded". Falls back to Overlay if container is too small. -->
-
+<!-- Signature: Title (Calculation), Message (Calculation), Prompt (Calculation), Presentation. -->
+<!-- Presentation choice: "Full Screen" | "Overlay" | "Embedded". Falls back to Overlay if container too small. -->
+<!-- FileMaker Go only; not supported on Pro, WebDirect, Server, Cloud, Data API, or CWP. -->
 <!-- See https://help.claris.com/en/pro-help/content/insert-from-device.html -->

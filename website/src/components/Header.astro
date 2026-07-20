@@ -4,6 +4,7 @@ const pathname = Astro.url.pathname.replace(base, '/');
 
 const links = [
   { href: `${base}`, label: 'Home' },
+  { href: 'https://plugin.agentic-fm.com', label: 'Plug-in', interstitial: true },
   { href: `${base}installation/`, label: 'Install' },
   { href: `${base}docs/`, label: 'Docs' },
   { href: `${base}skills/`, label: 'Skills' },
@@ -35,6 +36,7 @@ function isActive(href: string): boolean {
       {links.map((link) => (
         <a
           href={link.href}
+          data-interstitial={link.interstitial ? 'true' : undefined}
           class:list={[
             'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
             isActive(link.href)
@@ -89,6 +91,7 @@ function isActive(href: string): boolean {
     {links.map((link) => (
       <a
         href={link.href}
+        data-interstitial={link.interstitial ? 'true' : undefined}
         class:list={[
           'block rounded-md px-3 py-2 text-sm font-medium',
           isActive(link.href)
@@ -113,6 +116,80 @@ function isActive(href: string): boolean {
   </div>
 </header>
 
+<div
+  id="interstitial-overlay"
+  class="fixed inset-0 z-[100] hidden items-center justify-center bg-zinc-900/40 p-6 backdrop-blur-md"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="interstitial-title"
+  data-target=""
+>
+    <div
+      class="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-2xl dark:border-zinc-800 dark:bg-zinc-900"
+    >
+      <div class="mx-auto mb-6 flex h-36 w-36 items-center justify-center gap-4 rounded-full bg-primary-600 text-white">
+        <svg id="database-icon" xmlns="http://www.w3.org/2000/svg" width="47" height="47" fill="currentColor" class="bi bi-database" viewBox="0 0 16 16">
+          <path d="M4.318 2.687C5.234 2.271 6.536 2 8 2s2.766.27 3.682.687C12.644 3.125 13 3.627 13 4c0 .374-.356.875-1.318 1.313C10.766 5.729 9.464 6 8 6s-2.766-.27-3.682-.687C3.356 4.875 3 4.373 3 4c0-.374.356-.875 1.318-1.313M13 5.698V7c0 .374-.356.875-1.318 1.313C10.766 8.729 9.464 9 8 9s-2.766-.27-3.682-.687C3.356 7.875 3 7.373 3 7V5.698c.271.202.58.378.904.525C4.978 6.711 6.427 7 8 7s3.022-.289 4.096-.777A5 5 0 0 0 13 5.698M14 4c0-1.007-.875-1.755-1.904-2.223C11.022 1.289 9.573 1 8 1s-3.022.289-4.096.777C2.875 2.245 2 2.993 2 4v9c0 1.007.875 1.755 1.904 2.223C4.978 15.71 6.427 16 8 16s3.022-.289 4.096-.777C13.125 14.755 14 14.007 14 13zm-1 4.698V10c0 .374-.356.875-1.318 1.313C10.766 11.729 9.464 12 8 12s-2.766-.27-3.682-.687C3.356 10.875 3 10.373 3 10V8.698c.271.202.58.378.904.525C4.978 9.71 6.427 10 8 10s3.022-.289 4.096-.777A5 5 0 0 0 13 8.698m0 3V13c0 .374-.356.875-1.318 1.313C10.766 14.729 9.464 15 8 15s-2.766-.27-3.682-.687C3.356 13.875 3 13.373 3 13v-1.302c.271.202.58.378.904.525C4.978 12.71 6.427 13 8 13s3.022-.289 4.096-.777c.324-.147.633-.323.904-.525" />
+        </svg>
+        <svg id="plugin-piece" xmlns="http://www.w3.org/2000/svg" width="47" height="47" fill="currentColor" viewBox="0 0 256 256">
+          <path d="M220.27,158.54a8,8,0,0,0-7.7-.46,20,20,0,1,1,0-36.16A8,8,0,0,0,224,114.69V72a16,16,0,0,0-16-16H171.78a35.36,35.36,0,0,0,.22-4,36.11,36.11,0,0,0-11.36-26.24,36,36,0,0,0-60.55,23.62,36.56,36.56,0,0,0,.14,6.62H64A16,16,0,0,0,48,72v32.22a35.36,35.36,0,0,0-4-.22,36.12,36.12,0,0,0-26.24,11.36,35.7,35.7,0,0,0-9.69,27,36.08,36.08,0,0,0,33.31,33.6,35.68,35.68,0,0,0,6.62-.14V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V165.31A8,8,0,0,0,220.27,158.54ZM208,208H64V165.31a8,8,0,0,0-11.43-7.23,20,20,0,1,1,0-36.16A8,8,0,0,0,64,114.69V72h46.69a8,8,0,0,0,7.23-11.43,20,20,0,1,1,36.16,0A8,8,0,0,0,161.31,72H208v32.23a35.68,35.68,0,0,0-6.62-.14A36,36,0,0,0,204,176a35.36,35.36,0,0,0,4-.22Z" />
+        </svg>
+      </div>
+      <h2 id="interstitial-title" class="text-xl font-semibold text-zinc-900 dark:text-white">
+        Get ready to plug AI directly into FileMaker!
+      </h2>
+      <p class="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
+        Start automating your development in ways you never thought possible.
+      </p>
+      <p class="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
+        You're being taken to the
+        <span class="font-medium text-primary-600 dark:text-primary-400">plugin.agentic-fm.com</span>
+        web site.
+      </p>
+      <div class="mt-6 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+        Redirecting in <span id="interstitial-count" class="text-primary-600 dark:text-primary-400">10</span>&hellip;
+      </div>
+      <div class="mt-5 flex items-center justify-center gap-3">
+        <button
+          id="interstitial-cancel"
+          class="rounded-md border border-zinc-300 px-4 py-1.5 text-sm font-medium text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-white"
+        >
+          Cancel
+        </button>
+        <button
+          id="interstitial-continue"
+          class="rounded-md bg-primary-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-700"
+        >
+          Continue
+        </button>
+      </div>
+    </div>
+</div>
+
+<style>
+  /* 4s total. First 3s (0–75%): puzzle rotates 360° in place. Last 1s (75–100%):
+     both icons close the gap, each moving 13.5px toward the center. The joined
+     pair stays centered in the div. */
+  @keyframes plugIn {
+    0% { transform: rotate(0deg) translateX(0); }
+    75% { transform: rotate(360deg) translateX(0); }
+    100% { transform: rotate(360deg) translateX(-13.5px); }
+  }
+
+  @keyframes dockDatabase {
+    0%, 75% { transform: translateX(0); }
+    100% { transform: translateX(13.5px); }
+  }
+
+  #plugin-piece.is-plugging {
+    animation: plugIn 4s ease-in-out forwards;
+  }
+
+  #database-icon.is-plugging {
+    animation: dockDatabase 4s ease-in-out forwards;
+  }
+</style>
+
 <script>
   document.getElementById('theme-toggle')?.addEventListener('click', () => {
     const html = document.documentElement;
@@ -124,4 +201,68 @@ function isActive(href: string): boolean {
   document.getElementById('mobile-menu-toggle')?.addEventListener('click', () => {
     document.getElementById('mobile-menu')?.classList.toggle('hidden');
   });
+
+  (() => {
+    const overlay = document.getElementById('interstitial-overlay');
+    const countEl = document.getElementById('interstitial-count');
+    const cancelBtn = document.getElementById('interstitial-cancel');
+    const continueBtn = document.getElementById('interstitial-continue');
+    const piece = document.getElementById('plugin-piece');
+    const database = document.getElementById('database-icon');
+    if (!overlay || !countEl || !cancelBtn || !continueBtn) return;
+
+    const DURATION = 10;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let target = '';
+
+    function close() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      overlay.classList.add('hidden');
+      overlay.classList.remove('flex');
+      [piece, database].forEach((el) => el?.classList.remove('is-plugging'));
+    }
+
+    function start(href: string) {
+      target = href;
+      let remaining = DURATION;
+      countEl.textContent = String(remaining);
+      overlay.classList.remove('hidden');
+      overlay.classList.add('flex');
+      // Restart the plug-in animation each time the dialog opens.
+      [piece, database].forEach((el) => {
+        if (!el) return;
+        el.classList.remove('is-plugging');
+        void el.offsetWidth; // force reflow so the animation re-runs
+        el.classList.add('is-plugging');
+      });
+      timer = setInterval(() => {
+        remaining -= 1;
+        countEl.textContent = String(Math.max(remaining, 0));
+        if (remaining <= 0) {
+          close();
+          window.location.href = target;
+        }
+      }, 1000);
+    }
+
+    document.querySelectorAll<HTMLAnchorElement>('a[data-interstitial]').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        start(link.href);
+      });
+    });
+
+    cancelBtn.addEventListener('click', close);
+    continueBtn.addEventListener('click', () => {
+      close();
+      window.location.href = target;
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !overlay.classList.contains('hidden')) close();
+    });
+  })();
 </script>

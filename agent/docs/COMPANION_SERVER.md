@@ -18,7 +18,43 @@ python3 agent/scripts/companion_server.py
 
 # Custom port
 python3 agent/scripts/companion_server.py --port 9000
+
+# Auto-shut down after 45 minutes (2700s) with no requests
+python3 agent/scripts/companion_server.py --idle-timeout 2700
 ```
+
+### Configuration — `agent/config/companion.json`
+
+The host, port, and advertise address are resolved from a single optional file, `agent/config/companion.json` (gitignored — copy `companion.json.example` to create it).
+This is the single source of truth so the server and every client agree on one address.
+The file is optional: absent or malformed, the server falls back to built-in defaults and still boots.
+
+```jsonc
+{
+  "companion": {
+    "bind_host": "127.0.0.1",        // interface the server binds on
+    "port": 8765,                    // server port (single source of truth)
+    "advertise_host": "local.hub",   // host clients dial to reach it (may differ from bind_host)
+    "idle_timeout_seconds": 0        // 0 = never auto-shutdown
+  }
+}
+```
+
+`bind_host` / `port` govern where the server **binds**; `advertise_host` + `port` are what clients (`deploy.py`, tests) **dial**.
+A client can never change how the server binds.
+
+Resolution precedence, highest wins:
+
+- **Server bind** — CLI flag (`--port`) / env var (`COMPANION_BIND_HOST`, `COMPANION_PORT`) → `companion.json` → defaults (`127.0.0.1:8765`).
+- **Client reach** — `COMPANION_URL` env → `companion.json` `advertise_host` + `port` → legacy `automation.json` `companion_url` (deprecation window) → default.
+
+The plug-in's Application Support path is deliberately **not** configurable here — it is a fixed macOS platform location with one correct value, resolved against the macOS user running the companion (which must be the same user running FileMaker and the plug-in). A relocated or cross-user path is a deployment error to document, not a config knob.
+
+### Idle auto-shutdown
+
+By default the server runs until you stop it (`Ctrl-C`, `launchctl unload`, etc.). Pass `--idle-timeout <seconds>` (or set the `COMPANION_IDLE_TIMEOUT` environment variable) to have it wind down on its own after a stretch with no requests. This is handy when the server is started per work session — a launchd job at login, or a Claude Code `SessionStart` hook — and you'd rather it not sit resident overnight.
+
+A value of `0` (the default) disables auto-shutdown, so existing always-on setups are unaffected. Any incoming request resets the timer, so the server never stops mid-task.
 
 Startup log output:
 
@@ -316,7 +352,7 @@ Accepts a JSON payload of runtime debug state and writes it to `agent/debug/outp
 
 The server binds exclusively to `127.0.0.1` (localhost) by default. It is not reachable from other machines on the network — only processes running on the same machine can connect. No authentication is implemented, which is acceptable because the attack surface is limited to local processes already running under the same user account.
 
-Do not change `BIND_HOST` to `0.0.0.0` or expose the server through a reverse proxy. The `/explode` endpoint executes arbitrary shell scripts with the permissions of the user who started the server.
+Do not set `bind_host` (`companion.json`) or `COMPANION_BIND_HOST` to `0.0.0.0`, or expose the server through a reverse proxy. The `/explode` endpoint executes arbitrary shell scripts with the permissions of the user who started the server.
 
 > **Note for Docker users:** When running the agent in a container, `COMPANION_BIND_HOST=0.0.0.0` is required so the container can reach the host-side server. This is still safe as long as the host machine is on a private, firewalled network — the port should never be forwarded to a public interface.
 

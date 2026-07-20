@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="242" name="Print PDF">
+    <NoInteract state="True"/>
+    <Option state="False"/>
+    <UsePrintOptionsFromEnabled state="False"/>
+    <SavePrintOptionsToEnabled state="False"/>
+    <Restore state="False"/>
+    <UniversalPathList>$path</UniversalPathList>
+  </Step>
+</fmxmlsnippet>
+<!-- Prints a PDF file from a file path, container field, or variable. Encrypted PDF with missing/incorrect password returns error 607. Not on FileMaker Server / Cloud / Data API / CWP; partial on Go and WebDirect. -->
+<!-- NoInteract state: "True" = With dialog OFF (no print dialog); "False" = With dialog ON. -->
+<!-- File mode: <UniversalPathList>$path</UniversalPathList> is the source path. Source mode (From: Source): use a <Field> container ref instead (form by analogy to Append/Open PDF — not captured). -->
+<!-- Restore / Option state: "True" when stored print options are attached (the <PrintSettings> block below appears). -->
+<!-- UsePrintOptionsFromEnabled state: "True" reads print options from a container — adds <PrintSettings><UsePrintOptionsFrom><Field>$referenced_print_options</Field></UsePrintOptionsFrom>…</PrintSettings>. -->
+<!-- SavePrintOptionsToEnabled state: "True" saves print options to a container — adds <PrintSettings><SavePrintOptionsTo><Field>$saved_print_options</Field></SavePrintOptionsTo>…</PrintSettings>. -->
+<!-- When stored print options are present, FM serializes a full PrintSettings block (same shape as the native Print step). Structure (attributes and child element names verified; hex blobs elided):
+       PrintSettings @PageNumberingOffset @PrintToFile @ToPage @FromPage @AllPages @collated @NumCopies @PrintType="BrowsedRecords"
+         PlatformData @PlatformType="PrNm"   (printer name; hex)
+         PlatformData @PlatformType="M_PM"   (macOS PMPrintSettings; large hex; MACHINE-SPECIFIC)
+         PlatformData @PlatformType="M_PD"   (hex)
+         PlatformData @PlatformType="MMod"   (hex)
+         SavePrintOptionsTo > Field=$saved_print_options       (present when SavePrintOptionsToEnabled)
+         UsePrintOptionsFrom > Field=$referenced_print_options (present when UsePrintOptionsFromEnabled)
+         Password > Calculation "password"
+         SaveType  File
+     The PlatformData blobs encode the chosen printer plus OS print settings and are MACHINE-SPECIFIC; do not hand-author them. They are produced by configuring the step on the target machine. -->
+<!-- Required: a PDF source (UniversalPathList in File mode, or a <Field> container in Source mode). -->
+<!-- New in FileMaker 26.0. AUTHORITATIVE — captured from developer-configured steps (id 242). VERIFIED: the five boolean elements, UniversalPathList, and the full PrintSettings sub-tree (PlatformData, SavePrintOptionsTo, UsePrintOptionsFrom, Password, SaveType). The Source-mode <Field> container form was not captured (modeled by analogy). -->
+<!-- See https://help.claris.com/en/pro-help/content/print-pdf.html -->

@@ -74,9 +74,28 @@ def _evaluate_expression(odata_config, expression, layout=None):
     rp = result.get("resultParameter", "")
     if isinstance(rp, str) and rp:
         try:
-            return json.loads(rp)
+            result = json.loads(rp)
         except json.JSONDecodeError:
             pass
+
+    # Some AGFMScriptBridge builds wrap the evaluation verdict one layer
+    # deeper: the outer envelope's `result` is itself a JSON string holding the
+    # real {error_code, result, success}. Peel nested JSON-object string layers
+    # so the caller sees the actual verdict — otherwise a genuine "?" result
+    # hides behind the outer envelope's success:true and is never flagged.
+    for _ in range(3):
+        if not isinstance(result, dict):
+            break
+        inner = result.get("result")
+        if isinstance(inner, str):
+            stripped = inner.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    result = json.loads(stripped)
+                    continue
+                except json.JSONDecodeError:
+                    pass
+        break
 
     return result
 
@@ -178,6 +197,21 @@ class LiveEvalError(LintRule):
                     message=(
                         f"Calculation invalid in FileMaker engine "
                         f"(error {error_code}): {calc_text[:80]}"
+                    ),
+                    line=line,
+                ))
+            elif str(result.get("result", "")).strip() == "?":
+                # AGFMEvaluation reports success even when the engine returns "?"
+                # (unknown custom function, missing reference, or a feature the
+                # host server does not support). EvaluationError only catches
+                # syntax errors, so guard the "?" sentinel here as a hard failure.
+                diags.append(Diagnostic(
+                    rule_id=self.rule_id,
+                    severity=self.default_severity,
+                    message=(
+                        f'Calculation evaluated to "?" in FileMaker engine — '
+                        f"likely an unknown custom function, missing reference, "
+                        f"or unsupported feature: {calc_text[:80]}"
                     ),
                     line=line,
                 ))

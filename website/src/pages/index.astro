@@ -9,6 +9,93 @@ const base = import.meta.env.BASE_URL;
 
 <Base title="Home">
   <Hero />
+
+  <section class="border-t border-zinc-200 py-20 dark:border-zinc-800">
+    <div class="mx-auto max-w-6xl px-6">
+      <div class="mx-auto max-w-2xl text-center">
+        <h2 class="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+          Open Source (free) with Plug-In (paid)
+        </h2>
+        <p class="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
+          Both do the same three jobs — <strong>understand</strong> your solution, <strong>generate</strong> code, and <strong>deploy</strong> it back into FileMaker.
+          The free open-source project works through files and the clipboard. The paid plug-in works <strong>live inside FileMaker</strong>, so it's faster and more reliable — no exports, no manual paste.
+          It's an enhancement, never a requirement.
+        </p>
+      </div>
+
+      <div class="mx-auto mt-14 max-w-5xl overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr class="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50">
+                <th class="px-5 py-4 font-semibold text-zinc-900 dark:text-white"></th>
+                <th class="px-5 py-4 align-bottom">
+                  <span class="block font-semibold text-zinc-900 dark:text-white">Open Source</span>
+                  <span class="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>agentic-fm · free
+                  </span>
+                </th>
+                <th class="px-5 py-4 align-bottom">
+                  <span class="block font-semibold text-zinc-900 dark:text-white">Plug-In</span>
+                  <span class="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-primary-700 dark:text-primary-400">
+                    <span class="h-1.5 w-1.5 rounded-full bg-primary-500"></span>AgenticFM · paid
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Understand your solution</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Explode a <em>Save As XML</em> export into <code class="text-xs">xml_parsed/</code>; grep the index files and <code class="text-xs">CONTEXT.json</code>. More token costs.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Parses the same export into an indexed catalog with a cross-reference graph; runs indexed queries (impact, references, orphans, health).</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Generate code</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Hand-author <code class="text-xs">fmxmlsnippet</code> XML per the catalog rules. More token costs.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Emits human-readable script blocks; converts them to XML and verifies calculations against the live engine.</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Deploy into FileMaker</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Loads the snippet to the clipboard for a manual ⌘V (or AppleScript/MBS automation) via the companion server.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Pastes directly into the Script Workspace through the embedded HTTP server. No keystrokes.</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Validate</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Static linting with <code class="text-xs">fmlint</code>.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Static linting <strong>plus</strong> live-engine verification against the developer's actual FileMaker version.</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Resolve IDs / context</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Read <code class="text-xs">CONTEXT.json</code> and the index files — static, can go stale.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Resolved live via the FileMaker engine — never stale, no export step.</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Runtime bridge</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">A Python companion server running on the host alongside FileMaker.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">An HTTP server running inside the FileMaker process itself.</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">Front end</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Use your preferred agentic harness — Claude Desktop, Codex, VS Code, and more. You're not limited to a single CLI agent.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Use your preferred agentic harness (Claude Desktop, Codex, VS Code, etc.) and/or the native chat panel inside FileMaker.</td>
+              </tr>
+              <tr>
+                <th scope="row" class="whitespace-nowrap px-5 py-4 align-top font-semibold text-zinc-900 dark:text-white">License</th>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Apache 2.0 — free, open source.</td>
+                <td class="px-5 py-4 align-top text-zinc-600 dark:text-zinc-400">Annual per-developer license, with a 14-day trial.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="mx-auto mt-10 max-w-2xl text-center text-sm text-zinc-500 dark:text-zinc-400">
+        Want it inside FileMaker, without the copy-paste loop?
+        <a href="https://plugin.agentic-fm.com" data-interstitial="true" class="font-medium text-primary-600 underline-offset-4 hover:underline dark:text-primary-400">Meet the AgenticFM plug-in</a>.
+      </p>
+    </div>
+  </section>
+
   <FeatureGrid />
 
   <section class="border-t border-zinc-200 py-20 dark:border-zinc-800">
@@ -60,6 +147,12 @@ const base = import.meta.env.BASE_URL;
           </p>
         </div>
       </div>
+
+      <p class="mx-auto mt-10 max-w-2xl text-center text-sm text-zinc-500 dark:text-zinc-400">
+        That last step — pasting snippets into the Script Workspace — is manual by design.
+        Prefer a native chat panel that pastes for you?
+        <a href="https://plugin.agentic-fm.com" data-interstitial="true" class="font-medium text-primary-600 underline-offset-4 hover:underline dark:text-primary-400">The AgenticFM plug-in</a> does this automatically.
+      </p>
     </div>
   </section>
 
