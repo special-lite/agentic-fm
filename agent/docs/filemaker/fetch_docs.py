@@ -28,6 +28,7 @@ Usage
     python3 fetch_docs.py --prune            # drop pages Claris no longer lists
     python3 fetch_docs.py --keep-examples    # retain Example / Related topics sections
     python3 fetch_docs.py --locale ja        # non-English corpus
+    python3 fetch_docs.py --guides --out ../other-repo/.claris-docs
 
 Outputs
 -------
@@ -72,10 +73,22 @@ from pathlib import Path
 HELP_HOST = "https://help.claris.com"
 HERE = Path(__file__).resolve().parent
 
+# Output roots, relative to HERE by default.  --out points them at another
+# directory so a second repo can hold its own corpus without duplicating
+# this script.
 STEPS_OUT = HERE / "script-steps"
 FUNCS_OUT = HERE / "functions"
 GUIDES_OUT = HERE / "guides"
 ERRORS_OUT = HERE / "error-codes.md"
+
+
+def set_output_root(root: Path) -> None:
+    """Re-point every output path at *root*."""
+    global STEPS_OUT, FUNCS_OUT, GUIDES_OUT, ERRORS_OUT
+    STEPS_OUT = root / "script-steps"
+    FUNCS_OUT = root / "functions"
+    GUIDES_OUT = root / "guides"
+    ERRORS_OUT = root / "error-codes.md"
 
 DELAY = 0.25  # seconds between HTTP requests
 TIMEOUT = 30
@@ -496,6 +509,10 @@ def main() -> None:
     )
     ap.add_argument("--all", action="store_true", help="Fetch everything, guides included")
     ap.add_argument("--locale", default="en", help="Documentation locale (default: en)")
+    ap.add_argument("--out", metavar="DIR", type=Path,
+                    help="Write the corpus under DIR instead of next to this script. "
+                         "Use for a second repo that wants its own copy; make sure DIR "
+                         "is gitignored there (the pages are copyright Claris).")
     ap.add_argument("--refresh", action="store_true",
                     help="Re-fetch pages whose Claris date_modified has changed")
     ap.add_argument("--force", action="store_true",
@@ -509,6 +526,10 @@ def main() -> None:
     want_guides = args.all or args.guides is not None
     if not (args.steps or args.functions or args.errors or want_guides):
         args.steps = args.functions = args.errors = True
+
+    if args.out:
+        set_output_root(args.out.expanduser().resolve())
+        print(f"  Output root: {STEPS_OUT.parent}")
 
     kw = dict(force=args.force, refresh=args.refresh, keep_examples=args.keep_examples)
 
