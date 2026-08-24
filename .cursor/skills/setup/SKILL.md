@@ -383,23 +383,16 @@ After the core setup is complete, mention these optional next steps:
 
 > **Optional:** If you embedded the webviewer in FileMaker, the `filemaker/custom_menu/` folder contains an optional custom menu set that adds keyboard shortcuts for Monaco editor actions. See `filemaker/custom_menu/README.md` for integration steps.
 
-### FileMaker function reference (optional)
+### Claris reference documentation (optional)
 
-> **Optional:** Download the official Claris function reference for offline use by the agent.
->
-> This requires `requests` and `beautifulsoup4`. Set up a venv first:
+> **Optional:** Download the official Claris documentation as Markdown for offline use by the agent. No venv and no third-party packages are needed — the fetcher is standard library only.
 >
 > ```bash
-> python3 -m venv agent/.venv
-> source agent/.venv/bin/activate
-> pip install requests beautifulsoup4
+> python3 agent/docs/filemaker/fetch_docs.py          # script steps, functions, error codes
+> python3 agent/docs/filemaker/fetch_docs.py --all    # also SQL, OData, Data/Admin API, security guides
 > ```
 >
-> Then run the fetch script with the venv active (or prefix with `agent/.venv/bin/python3`):
->
-> ```bash
-> agent/.venv/bin/python3 agent/docs/filemaker/fetch_docs.py
-> ```
+> Re-run later with `--all --refresh` to pull only the pages Claris has changed since.
 
 ---
 
