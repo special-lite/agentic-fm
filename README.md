@@ -450,7 +450,9 @@ See `agent/CONTEXT.example.json` for the full schema and a realistic example.
 
 # FileMaker Reference Documentation (Optional)
 
-The `agent/docs/filemaker/` directory contains a script that fetches the official FileMaker Pro reference documentation from the Claris help site and converts it to Markdown. This is useful for giving AI agents accurate, up-to-date information about script step options, function syntax, and error codes without relying solely on training data.
+The `agent/docs/filemaker/` directory contains a script that downloads the official Claris documentation as Markdown. This gives AI agents accurate information about script step options, function syntax, error codes, and the SQL/OData/API guides without relying solely on training data.
+
+Claris publishes the entire help corpus in Markdown alongside the HTML, indexed per the [llms.txt](https://llmstxt.org) convention at `help.claris.com/llms.txt`. `fetch_docs.py` reads that index and pulls the Markdown directly — no HTML scraping, no slug guessing, and **no third-party dependencies** (standard library only).
 
 > **Legal notice:** The generated Markdown files are copyrighted by Claris International Inc. They are excluded from this repository via `.gitignore` and may only be generated for personal, non-commercial use in accordance with the [Claris Website Terms of Use](https://claris.com/company/legal/terms). Do not commit, redistribute, or publish the generated files.
 
@@ -458,11 +460,17 @@ The `agent/docs/filemaker/` directory contains a script that fetches the officia
 
 ```bash
 cd agent/docs/filemaker
-python3 fetch_docs.py              # fetch everything
-python3 fetch_docs.py --steps      # script steps only
-python3 fetch_docs.py --functions  # functions only
-python3 fetch_docs.py --errors     # error codes only
-python3 fetch_docs.py --force      # re-download cached files
+python3 fetch_docs.py                 # script steps + functions + error codes
+python3 fetch_docs.py --steps         # script steps only
+python3 fetch_docs.py --functions     # functions only
+python3 fetch_docs.py --errors        # error codes only
+python3 fetch_docs.py --guides        # SQL reference, OData, Data/Admin API, security, ...
+python3 fetch_docs.py --guides sql-reference odata-guide
+python3 fetch_docs.py --all           # everything above
+
+python3 fetch_docs.py --refresh       # re-fetch only what Claris has changed
+python3 fetch_docs.py --prune         # drop pages Claris no longer lists
+python3 fetch_docs.py --force         # re-fetch everything
 ```
 
 **Outputs** (written relative to `agent/docs/filemaker/`):
@@ -472,8 +480,15 @@ python3 fetch_docs.py --force      # re-download cached files
 | `script-steps/<slug>.md`         | One file per script step (options, compatibility, notes) |
 | `functions/<category>/<slug>.md` | One file per calculation function                        |
 | `error-codes.md`                 | Full FileMaker error code reference                      |
+| `guides/<doc-set>/<slug>.md`     | Whole guides — `sql-reference`, `odata-guide`, `data-api-guide`, `admin-api-guide`, `security-guide`, and any other doc-set named in the index |
 
-Dependencies (`requests` and `beautifulsoup4`) are installed automatically on first run if not already present.
+**Keeping the corpus current.** Each saved page keeps a short provenance header carrying the source URL and Claris's own `date_modified`. `--refresh` compares that against the index and re-downloads only pages that actually changed, so a routine update costs one index fetch plus the deltas:
+
+```bash
+python3 fetch_docs.py --all --refresh
+```
+
+**Note on versions.** `help.claris.com` always serves the current release (FileMaker 26 at time of writing). Pages state their version in the provenance header; check it before trusting a compatibility table against an older deployed version.
 
 # Dependencies
 

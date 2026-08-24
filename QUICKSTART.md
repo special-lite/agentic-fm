@@ -34,7 +34,7 @@ agentic-fm gives an AI agent structured knowledge of your FileMaker solution —
 4. **Node.js 18+** — required only for the webviewer path, not for CLI/IDE-only usage. Install from [nodejs.org](https://nodejs.org) or via `brew install node`
 5. **Your AI agent of choice** — Claude Code, Cursor, VS Code + Copilot, etc. (CLI/IDE path only)
 
-> **Python virtual environment**: Only needed if you plan to run `agent/docs/filemaker/fetch_docs.py` to fetch Claris reference documentation. That script auto-installs `requests` and `beautifulsoup4` on first run via pip. The core scripts (`clipboard.py`, `validate_snippet.py`, `companion_server.py`) use the Python standard library only — no venv required.
+> **Python virtual environment**: Not required. The core scripts (`clipboard.py`, `validate_snippet.py`, `companion_server.py`) and `agent/docs/filemaker/fetch_docs.py` all use the Python standard library only. A venv is only needed for optional skills that pull in extra packages (see `.claude/CLAUDE.md`).
 
 ---
 

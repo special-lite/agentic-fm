@@ -1,32 +1,50 @@
 #!/usr/bin/env python3
 """
-Fetch FileMaker Pro reference documentation from the Claris help site.
+Fetch Claris FileMaker reference documentation as Markdown.
 
-Downloads script-step, function, and error-code reference pages and
-converts them to clean Markdown suitable for AI consumption.  Only
-parameters, options, compatibility, and behavioral notes are retained;
-examples and boilerplate prose are stripped.
+Claris publishes the entire help corpus in Markdown alongside the HTML,
+indexed per the llms.txt convention:
+
+    https://help.claris.com/llms.txt                      curated entry point
+    https://help.claris.com/markdown/en/llms-full.txt      full page enumeration
+    https://help.claris.com/markdown/en/<doc-set>/<slug>.md
+
+This script reads that index and downloads the Markdown directly.  There is
+no HTML scraping, no slug guessing, and no third-party dependency -- the
+standard library is all that is required.
 
 Usage
 -----
-    python fetch_docs.py              # fetch everything
-    python fetch_docs.py --steps      # script steps only
-    python fetch_docs.py --functions   # functions only
-    python fetch_docs.py --errors     # error codes only
+    python3 fetch_docs.py                    # steps + functions + error codes
+    python3 fetch_docs.py --steps            # script steps only
+    python3 fetch_docs.py --functions        # functions only
+    python3 fetch_docs.py --errors           # error codes only
+    python3 fetch_docs.py --guides           # the default guide set (SQL, OData, APIs, ...)
+    python3 fetch_docs.py --guides sql-reference odata-guide
+    python3 fetch_docs.py --all              # everything above
+
+    python3 fetch_docs.py --refresh          # re-fetch only pages Claris has changed
+    python3 fetch_docs.py --force            # re-fetch everything
+    python3 fetch_docs.py --prune            # drop pages Claris no longer lists
+    python3 fetch_docs.py --keep-examples    # retain Example / Related topics sections
+    python3 fetch_docs.py --locale ja        # non-English corpus
 
 Outputs
 -------
     script-steps/<slug>.md
     functions/<category>/<slug>.md
     error-codes.md
+    guides/<doc-set>/<slug>.md
 
-Re-running the script skips pages that already have a local .md file.
-Delete a file (or pass --force) to re-fetch.
+Every saved file keeps a short provenance header (source URL, the Claris
+``date_modified``, and ``topic_type``).  ``--refresh`` compares that stored
+date against the index and re-downloads only what actually changed, so
+keeping the corpus current costs a single index fetch plus the deltas.
 
 Legal Notice
 ------------
 The content fetched and stored by this script is sourced from the Claris
-help site (https://help.claris.com) and is copyright © Claris International
+help site (https://help.claris.com) and is copyright (c) Claris International
 Inc. All rights reserved.
 
 The generated Markdown files are NOT part of this project's Apache 2.0
@@ -38,39 +56,35 @@ Website Terms of Use (https://claris.com/company/legal/terms).
 Do not commit, redistribute, or publish the generated files.
 """
 
+from __future__ import annotations
+
 import argparse
-import os
+import json
 import re
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
-from urllib.parse import urljoin
-from xml.etree import ElementTree as ET
 
-# ── Auto-install dependencies ────────────────────────────────────────────
-try:
-    import requests
-    from bs4 import BeautifulSoup, Tag, NavigableString
-except ImportError:
-    import subprocess as _sp
-    _sp.check_call(
-        [sys.executable, "-m", "pip", "install", "requests", "beautifulsoup4"]
-    )
-    import requests
-    from bs4 import BeautifulSoup, Tag, NavigableString
+# -- Constants ------------------------------------------------------------
 
-
-# ── Constants ────────────────────────────────────────────────────────────
-
-BASE_URL = "https://help.claris.com/en/pro-help/content/"
+HELP_HOST = "https://help.claris.com"
 HERE = Path(__file__).resolve().parent
+
 STEPS_OUT = HERE / "script-steps"
 FUNCS_OUT = HERE / "functions"
-SNIPPETS = HERE.parent.parent / "snippet_examples" / "steps"
+GUIDES_OUT = HERE / "guides"
+ERRORS_OUT = HERE / "error-codes.md"
 
-DELAY = 0.35  # seconds between HTTP requests
+DELAY = 0.25  # seconds between HTTP requests
+TIMEOUT = 30
 
-# Script-step category page slugs
+# Category pages used to discover step and function reference topics.  These
+# are only a *candidate* source -- the authoritative classification is the
+# topic_type in each page's own front matter, so a conceptual page listed
+# here (json-functions is prose, not a link table) still yields the right
+# result and index pages filter themselves out.
 STEP_CATS = [
     "control-script-steps",
     "navigation-script-steps",
@@ -87,7 +101,6 @@ STEP_CATS = [
     "miscellaneous-script-steps",
 ]
 
-# Function category page slugs
 FUNC_CATS = [
     "text-functions",
     "text-formatting-functions",
@@ -97,7 +110,7 @@ FUNC_CATS = [
     "timestamp-functions",
     "container-functions",
     "japanese-functions",
-    "json-functions",
+    "json-functions-category",
     "aggregate-functions",
     "repeating-functions",
     "financial-functions",
@@ -110,474 +123,421 @@ FUNC_CATS = [
     "mobile-functions",
 ]
 
-# Slugs that are index / category pages, not individual reference pages
-_INDEX_SLUGS = (
-    {"script-steps-reference", "functions-reference", "scripts",
-     "formulas", "functions", "error-codes", "using-variables",
-     "repeating-fields", "scripts"}
-    | set(STEP_CATS)
-    | set(FUNC_CATS)
+# Guide doc-sets fetched by a bare --guides.  Any doc-set name that appears
+# in the index may be passed explicitly instead.
+DEFAULT_GUIDES = [
+    "sql-reference",
+    "odata-guide",
+    "data-api-guide",
+    "admin-api-guide",
+    "security-guide",
+    "pro-svg-grammar-for-button-icons",
+    "developer-tool-guide",
+    "app-upgrade-tool-guide",
+]
+
+# Folder name for category pages whose slug is not "<folder>-functions".
+CAT_FOLDER = {"json-functions-category": "json"}
+
+# topic_type values that mark an individual reference topic.
+TYPE_STEP = "script-step-reference"
+TYPE_FUNCTION = "function-reference"
+
+# Section headings dropped unless --keep-examples (matched as prefix, folded).
+SKIP_SECTIONS = ("example", "related topic", "see also")
+
+# Front-matter keys carried through into the saved file.
+KEEP_KEYS = ("title", "topic_type", "product", "version", "date_modified", "url")
+
+
+# -- HTTP -----------------------------------------------------------------
+
+def _get(url: str) -> str | None:
+    """Fetch *url* as text.  Returns None on 404 / redirect-to-error."""
+    time.sleep(DELAY)
+    req = urllib.request.Request(url, headers={"User-Agent": "FileMaker-DocFetcher/2.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+    # A missing Markdown page 302s to the marketing 404 page.
+    if body.lstrip().startswith("<!DOCTYPE HTML") or body.lstrip().startswith("<html"):
+        return None
+    return body
+
+
+# -- Index ----------------------------------------------------------------
+
+_INDEX_LINE = re.compile(
+    r"^- \[(?P<title>.*?)\]\("
+    r"(?P<url>https://help\.claris\.com/markdown/(?P<locale>[a-z-]+)/"
+    r"(?P<docset>[a-z0-9-]+)/(?P<slug>[a-z0-9._-]+)\.md)\)"
+    r"(?:\s*\(modified:\s*(?P<modified>[^)]*)\))?"
 )
 
-# Known slug overrides  (step name → correct slug on Claris help site)
-_SLUG_OVERRIDES = {
-    "#": "comment",
-    "Configure NFC Reading": "configure-nfc",
-    "Perform AppleScript": "perform-applescript-os-x",
-    "Speak": "speak-os-x",
-    "Perform Script on Server with Callback": "perform-script-on-server-callback",
-    "Get Folder Path": "get-directory",
-    "Open Upload to Host": "upload-to-server",
-    "Send DDE Execute": "send-dde-execute-windows",
-    "Open Settings": "open-preferences",
-    "If": "if-script-step",
-}
 
+def load_index(locale: str) -> dict[str, dict[str, dict]]:
+    """Return {doc_set: {slug: {url, title, modified}}} from llms-full.txt."""
+    url = f"{HELP_HOST}/markdown/{locale}/llms-full.txt"
+    print(f"  Reading index {url} ... ", end="", flush=True)
+    text = _get(url)
+    if text is None:
+        sys.exit(f"\nCould not read the documentation index at {url}")
 
-# ── HTTP helper ──────────────────────────────────────────────────────────
-
-_session = requests.Session()
-_session.headers["User-Agent"] = "FileMaker-DocFetcher/1.0"
-
-
-def _get(url: str) -> requests.Response:
-    time.sleep(DELAY)
-    return _session.get(url, timeout=30)
-
-
-# ── HTML → Markdown conversion ───────────────────────────────────────────
-
-def _inline(tag) -> str:
-    """Recursively render a tag to inline Markdown."""
-    if isinstance(tag, NavigableString):
-        return str(tag)
-    if not isinstance(tag, Tag):
-        return ""
-    parts = [_inline(ch) for ch in tag.children]
-    inner = "".join(parts)
-    n = tag.name
-    if n in ("b", "strong"):
-        return f"**{inner.strip()}**"
-    if n in ("i", "em"):
-        return f"*{inner.strip()}*"
-    if n == "code":
-        return f"`{tag.get_text()}`"
-    if n == "a":
-        href = tag.get("href", "")
-        if href.startswith("javascript:"):
-            return inner
-        return f"[{inner}]({urljoin(BASE_URL, href)})"
-    if n == "br":
-        return "\n"
-    return inner
-
-
-def _table_md(tbl: Tag) -> str:
-    """Convert an HTML <table> to a Markdown table."""
-    rows: list[list[str]] = []
-    for tr in tbl.find_all("tr"):
-        cells = [
-            _inline(c).strip().replace("|", "\\|")
-            for c in tr.find_all(["th", "td"])
-        ]
-        rows.append(cells)
-    if not rows:
-        return ""
-    ncols = max(len(r) for r in rows)
-    for r in rows:
-        r.extend([""] * (ncols - len(r)))
-    lines = [
-        "| " + " | ".join(rows[0]) + " |",
-        "| " + " | ".join("---" for _ in range(ncols)) + " |",
-    ]
-    for r in rows[1:]:
-        lines.append("| " + " | ".join(r) + " |")
-    return "\n".join(lines)
-
-
-def _list_md(tag: Tag) -> str:
-    """Convert a <ul> or <ol> to Markdown."""
-    items = []
-    ordered = tag.name == "ol"
-    for i, li in enumerate(tag.find_all("li", recursive=False), 1):
-        pfx = f"{i}. " if ordered else "- "
-        items.append(pfx + _inline(li).strip())
-    return "\n".join(items)
-
-
-# Section headings to skip (matched as prefix, case-insensitive)
-_SKIP_HEADINGS = {"example", "related topic", "see also"}
-
-
-def _process_element(el: Tag, parts: list[str], skip_sections: set,
-                     *, keep_examples: bool = False) -> bool:
-    """Process a single element; return True if currently skipping."""
-    skip = False
-
-    if el.name in ("h1", "h2", "h3", "h4"):
-        txt = el.get_text(strip=True).replace("\xa0", " ")
-        norm = re.sub(r"\s*\d+\s*$", "", txt).lower().strip()
-        if not keep_examples and any(
-            norm.startswith(s) for s in skip_sections
-        ):
-            return True  # start skipping
-        level = int(el.name[1])
-        parts.append(f"\n{'#' * level} {txt}\n")
-        return False
-
-    if el.name == "table":
-        parts.append(_table_md(el) + "\n")
-        return False
-
-    if el.name in ("ul", "ol"):
-        parts.append(_list_md(el) + "\n")
-        return False
-
-    if el.name == "pre":
-        parts.append(f"\n```\n{el.get_text()}\n```\n")
-        return False
-
-    if el.name in ("p",):
-        t = _inline(el).strip()
-        if t:
-            parts.append(t + "\n")
-        return False
-
-    # For divs that wrap content (like compat-wrapper), recurse into children
-    if el.name in ("div", "section"):
-        # Check for compatibility wrapper (contains a table)
-        tbl = el.find("table")
-        if tbl:
-            heading_el = el.find(["h2", "h3"])
-            if heading_el:
-                txt = heading_el.get_text(strip=True).replace("\xa0", " ")
-                level = int(heading_el.name[1])
-                parts.append(f"\n{'#' * level} {txt}\n")
-            parts.append(_table_md(tbl) + "\n")
-            return False
-        # Otherwise recurse
-        for child in el.children:
-            if isinstance(child, Tag):
-                _process_element(child, parts, skip_sections,
-                                 keep_examples=keep_examples)
-        return False
-
-    return False
-
-
-def to_markdown(soup: BeautifulSoup, *, keep_examples: bool = False) -> str:
-    """Extract the main content of a Claris help page as Markdown.
-
-    Strips navigation, header/footer chrome, examples, and related-topics.
-    Keeps: title, Options, Compatibility, Description, Format, Notes.
-    """
-    # Find the actual content container
-    body = (
-        soup.find("div", id="mc-main-content")
-        or soup.find("div", class_="body-container")
-        or soup.find("main")
-        or soup.body
-        or soup
-    )
-
-    parts: list[str] = []
-    skip = False
-
-    for el in body.children:
-        if not isinstance(el, Tag):
+    index: dict[str, dict[str, dict]] = {}
+    for line in text.splitlines():
+        m = _INDEX_LINE.match(line.strip())
+        if not m:
             continue
+        index.setdefault(m["docset"], {})[m["slug"]] = {
+            "url": m["url"],
+            "title": m["title"],
+            "modified": (m["modified"] or "").strip(),
+        }
+    total = sum(len(v) for v in index.values())
+    print(f"{total} pages across {len(index)} doc sets")
+    return index
 
-        if el.name in ("h1", "h2", "h3", "h4"):
-            txt = el.get_text(strip=True).replace("\xa0", " ")
-            norm = re.sub(r"\s*\d+\s*$", "", txt).lower().strip()
-            if not keep_examples and any(
-                norm.startswith(s) for s in _SKIP_HEADINGS
-            ):
-                skip = True
+
+# -- Markdown handling ----------------------------------------------------
+
+def split_front_matter(text: str) -> tuple[dict[str, str], str]:
+    """Split a Claris Markdown page into (front-matter dict, body)."""
+    if not text.startswith("---"):
+        return {}, text
+    end = text.find("\n---", 3)
+    if end == -1:
+        return {}, text
+    raw = text[3:end]
+    body = text[end + 4:].lstrip("\n")
+    front: dict[str, str] = {}
+    for line in raw.splitlines():
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        front[key.strip()] = value.strip().strip('"')
+    return front, body
+
+
+def filter_sections(body: str, *, keep_examples: bool) -> str:
+    """Drop Example / Related topics / See also sections from a page body."""
+    if keep_examples:
+        return body.strip()
+
+    out: list[str] = []
+    skipping = False
+    for line in body.splitlines():
+        heading = re.match(r"^(#{2,6})\s+(.*)$", line)
+        if heading:
+            name = heading.group(2).replace("\xa0", " ").strip().lower()
+            name = re.sub(r"\s*\d+\s*$", "", name)  # "Example 2" -> "example"
+            skipping = any(name.startswith(s) for s in SKIP_SECTIONS)
+            if skipping:
                 continue
-            skip = False
-            level = int(el.name[1])
-            parts.append(f"\n{'#' * level} {txt}\n")
+        if not skipping:
+            out.append(line)
+
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+
+
+def render(front: dict[str, str], body: str, *, keep_examples: bool) -> str:
+    """Rebuild a page with a trimmed provenance header."""
+    header = [f"{k}: {front[k]}" for k in KEEP_KEYS if front.get(k)]
+    text = filter_sections(body, keep_examples=keep_examples)
+    if not header:
+        return text + "\n"
+    return "---\n" + "\n".join(header) + "\n---\n\n" + text + "\n"
+
+
+def local_modified(path: Path) -> str | None:
+    """Read the stored date_modified from an already-fetched page."""
+    if not path.is_file():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            head = fh.read(1024)
+    except OSError:
+        return None
+    m = re.search(r"^date_modified:\s*(.+)$", head, re.MULTILINE)
+    return m.group(1).strip() if m else None
+
+
+_ROW_LINK = re.compile(
+    r"^\|\s*\[[^\]]+\]\(https://help\.claris\.com/[a-z-]+/pro-help/content/([a-z0-9._-]+)\.html"
+)
+
+
+def _table_row_slugs(body: str) -> list[str]:
+    """Slugs listed as rows of a category page's link table, in order.
+
+    Category pages present their members as a two-column Markdown table.
+    Harvesting only those rows -- rather than every link on the page --
+    keeps conceptual cross-references (the FileMaker Go help topics that
+    older scrapes filed as "script steps") out of the corpus.
+    """
+    return [m.group(1) for line in body.splitlines() if (m := _ROW_LINK.match(line.strip()))]
+
+
+def catalog_step_titles() -> set[str]:
+    """Step names from the step catalog, used as a discovery safety net.
+
+    A handful of real reference topics are absent from the category tables
+    or carry a wrong topic_type in Claris's own front matter (Save Records
+    as PDF, Set Dictionary).  Matching index *titles* against the catalog's
+    step names catches them without guessing URL slugs.
+    """
+    catalog = HERE.parent.parent / "catalogs" / "step-catalog-en.json"
+    if not catalog.is_file():
+        return set()
+    try:
+        data = json.loads(catalog.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    steps = data.get("steps", data) if isinstance(data, dict) else data
+    steps = steps.values() if isinstance(steps, dict) else steps
+    return {normalize_title(s["name"]) for s in steps
+            if isinstance(s, dict) and s.get("name")}
+
+
+def normalize_title(name: str) -> str:
+    """Fold a step name for comparison against a Claris page title.
+
+    Claris titles differ from the catalog's step names in case ("Perform
+    Script On Server"), in stray whitespace, and by a trailing platform
+    suffix ("Speak (macOS)").  None of those should defeat a match.
+    """
+    return re.sub(r"\s*\([^)]*\)\s*$", "", name).strip().casefold()
+
+
+# -- Fetch / save ---------------------------------------------------------
+
+class Stats:
+    def __init__(self) -> None:
+        self.fetched = self.cached = 0
+        self.missing: list[str] = []
+        self.mislabelled: list[str] = []
+
+    def line(self, label: str) -> str:
+        out = f"  {label}: {self.fetched} fetched, {self.cached} unchanged"
+        if self.mislabelled:
+            out += f", {len(self.mislabelled)} with an unexpected topic_type"
+        if self.missing:
+            out += f", {len(self.missing)} unavailable"
+        return out
+
+
+def save_page(
+    entry: dict,
+    out_path: Path,
+    stats: Stats,
+    *,
+    force: bool,
+    refresh: bool,
+    keep_examples: bool,
+    expect_type: str | None = None,
+) -> dict[str, str] | None:
+    """Download one page and write it.  Returns its front matter, or None.
+
+    Honours the cache: an existing file whose stored date_modified matches
+    the index is left alone unless --force is given.
+    """
+    have = local_modified(out_path)
+    if have is not None and not force:
+        if not refresh or (entry["modified"] and have == entry["modified"]):
+            stats.cached += 1
+            return None
+
+    text = _get(entry["url"])
+    if text is None:
+        stats.missing.append(entry["url"])
+        return None
+
+    front, body = split_front_matter(text)
+    if expect_type and front.get("topic_type") != expect_type:
+        # Claris's own front matter mislabels a few reference topics as
+        # "conceptual".  Membership of a curated category table (or of the
+        # step catalog) is the stronger signal, so note the mismatch and
+        # keep the page rather than dropping it.
+        stats.mislabelled.append(out_path.name)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(render(front, body, keep_examples=keep_examples), encoding="utf-8")
+    stats.fetched += 1
+    return front
+
+
+def prune_dir(root: Path, keep: set[str]) -> None:
+    """Delete generated pages under *root* that are no longer members.
+
+    Earlier scrapes of the HTML help harvested every link on a category
+    page, leaving unrelated topics behind in these folders.  The folders
+    are generated and gitignored, so removing strays is safe.
+    """
+    if not root.is_dir():
+        return
+    removed = 0
+    for path in sorted(root.rglob("*.md")):
+        if str(path.relative_to(root)) not in keep:
+            path.unlink()
+            removed += 1
+    for path in sorted(root.rglob("*"), reverse=True):
+        if path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+    if removed:
+        print(f"    pruned {removed} page(s) that are no longer listed")
+
+
+def _discover(cats: list[str], pages: dict[str, dict]) -> dict[str, list[str]]:
+    """Map each category slug to the reference slugs it links to."""
+    found: dict[str, list[str]] = {}
+    for cat in cats:
+        entry = pages.get(cat)
+        if entry is None:
+            print(f"    {cat} -- not in index, skipped")
             continue
-
-        if skip:
+        text = _get(entry["url"])
+        if text is None:
+            print(f"    {cat} -- unavailable, skipped")
             continue
-
-        _process_element(el, parts, _SKIP_HEADINGS,
-                         keep_examples=keep_examples)
-
-    md = "\n".join(parts).strip()
-    # Strip common footer boilerplate
-    md = re.sub(
-        r"Was this topic helpful\?.*$", "", md, flags=re.DOTALL
-    ).strip()
-    return re.sub(r"\n{3,}", "\n\n", md)
-
-
-# ── Link discovery ───────────────────────────────────────────────────────
-
-def _discover_links(soup: BeautifulSoup, base_url: str) -> dict[str, str]:
-    """Return {slug: full_url} for same-directory .html links in *soup*."""
-    found: dict[str, str] = {}
-    for a in soup.find_all("a", href=True):
-        href = a["href"].split("#")[0].split("?")[0]
-        if not href.endswith(".html") or "/" in href:
-            continue
-        slug = href.replace(".html", "")
-        if slug in _INDEX_SLUGS:
-            continue
-        found[slug] = urljoin(base_url, href)
+        _, body = split_front_matter(text)
+        slugs = [s for s in dict.fromkeys(_table_row_slugs(body)) if s in pages and s not in cats]
+        found[cat] = slugs
+        print(f"    {cat}: {len(slugs)} candidates")
     return found
 
 
-# ── Step-name → slug derivation ──────────────────────────────────────────
+# -- Commands -------------------------------------------------------------
 
-def _step_name_to_slug(name: str) -> str:
-    """Derive the expected Claris help URL slug from a FileMaker step name."""
-    # Check both the raw name and the stripped name against overrides
-    if name in _SLUG_OVERRIDES:
-        return _SLUG_OVERRIDES[name]
-    stripped = name.strip()
-    if stripped in _SLUG_OVERRIDES:
-        return _SLUG_OVERRIDES[stripped]
-    slug = name.lower()
-    slug = slug.replace("/", "-").replace("\\", "-")
-    slug = re.sub(r"[#()\[\]{},.'\"!?;:]", "", slug)
-    slug = slug.strip().replace(" ", "-")
-    slug = re.sub(r"-{2,}", "-", slug)
-    return slug.strip("-")
+def fetch_steps(pages: dict[str, dict], stats: Stats, *, prune: bool = False, **kw) -> None:
+    print("  Discovering script steps ...")
+    discovered = _discover(STEP_CATS, pages)
+    slugs = {s for v in discovered.values() for s in v}
 
+    known = catalog_step_titles()
+    if known:
+        by_title = {slug: e for slug, e in pages.items()
+                    if normalize_title(e["title"]) in known}
+        extra = set(by_title) - slugs
+        if extra:
+            print(f"    step catalog: +{len(extra)} not listed on a category page")
+        slugs |= set(by_title)
 
-def _read_step_name(xml_path: Path) -> str | None:
-    """Read the name= attribute from a snippet XML file.
-
-    Handles files with trailing comments after </fmxmlsnippet> by
-    parsing only up to the closing root tag.
-    """
-    try:
-        text = xml_path.read_text(encoding="utf-8")
-        # Strip anything after the closing root tag so ET doesn't choke
-        idx = text.find("</fmxmlsnippet>")
-        if idx != -1:
-            text = text[: idx + len("</fmxmlsnippet>")]
-        root = ET.fromstring(text)
-        step = root.find("Step")
-        if step is not None:
-            return step.get("name")
-    except Exception:
-        pass
-    return None
+    print(f"\n  Checking {len(slugs)} candidate pages ...")
+    for slug in sorted(slugs):
+        save_page(pages[slug], STEPS_OUT / f"{slug}.md", stats,
+                  expect_type=TYPE_STEP, **kw)
+    if prune:
+        prune_dir(STEPS_OUT, {f"{s}.md" for s in slugs})
+    print(stats.line("Script steps"))
 
 
-# ── Fetch-and-save helper ────────────────────────────────────────────────
+def fetch_functions(pages: dict[str, dict], stats: Stats, *, prune: bool = False, **kw) -> None:
+    print("  Discovering functions ...")
+    discovered = _discover(FUNC_CATS, pages)
 
-def _fetch_page(url: str, out_path: Path, *, keep_examples=False) -> bool:
-    """Download one page, convert to MD, save.  Returns True on success."""
-    r = _get(url)
-    if r.status_code == 404:
-        return False
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-    md = to_markdown(soup, keep_examples=keep_examples)
-    if not md.strip():
-        return False
-    out_path.write_text(md, encoding="utf-8")
-    return True
-
-
-# ── Script Steps ─────────────────────────────────────────────────────────
-
-def fetch_steps(*, force: bool = False) -> dict[str, str]:
-    """Discover and download all individual script-step pages.
-
-    Returns {slug: url} of all discovered pages.
-    """
-    STEPS_OUT.mkdir(parents=True, exist_ok=True)
-    slugs: dict[str, str] = {}  # slug → url
-
-    # 1. Discover from category pages (in case any expose step links)
-    for cat in STEP_CATS:
-        url = BASE_URL + cat + ".html"
-        print(f"  Scanning {cat} ... ", end="", flush=True)
-        r = _get(url)
-        if r.status_code != 200:
-            print("SKIP")
-            continue
-        soup = BeautifulSoup(r.text, "html.parser")
-        found = _discover_links(soup, url)
-        slugs.update(found)
-        print(f"{len(found)} links")
-
-    # 2. Supplement with slugs derived from XML filenames
-    xml_derived = 0
-    if SNIPPETS.is_dir():
-        for xml_file in sorted(SNIPPETS.rglob("*.xml")):
-            name = _read_step_name(xml_file) or xml_file.stem
-            slug = _step_name_to_slug(name)
-            if slug and slug not in slugs:
-                slugs[slug] = BASE_URL + slug + ".html"
-                xml_derived += 1
-    print(f"  + {xml_derived} slugs derived from XML filenames")
-
-    # 3. Fetch pages
-    total = len(slugs)
-    ok = skip = 0
-    failed: list[str] = []
-    print(f"\n  Fetching {total} script-step pages ...")
-    for i, (slug, url) in enumerate(sorted(slugs.items()), 1):
-        out = STEPS_OUT / f"{slug}.md"
-        if out.exists() and not force:
-            print(f"    [{i}/{total}] {slug} (cached)")
-            skip += 1
-            continue
-        if _fetch_page(url, out):
-            print(f"    [{i}/{total}] {slug} OK")
-            ok += 1
-        else:
-            print(f"    [{i}/{total}] {slug} -- 404/empty")
-            failed.append(slug)
-
-    print(f"\n  Steps: {ok} fetched, {skip} cached, {len(failed)} missing")
-    if failed:
-        print(f"  Missing: {', '.join(failed)}")
-    return slugs
-
-
-# ── Functions ────────────────────────────────────────────────────────────
-
-def fetch_functions(*, force: bool = False) -> dict[str, dict]:
-    """Discover and download all individual function pages.
-
-    Returns {slug: {url, category}}.
-    """
-    FUNCS_OUT.mkdir(parents=True, exist_ok=True)
-    pages: dict[str, dict] = {}
-
+    # First category to claim a slug owns its folder, so the ordering of
+    # FUNC_CATS decides placement when a function is cross-linked.
+    placement: dict[str, str] = {}
     for cat in FUNC_CATS:
-        url = BASE_URL + cat + ".html"
-        cat_name = cat.replace("-functions", "")
-        print(f"  Scanning {cat} ... ", end="", flush=True)
-        r = _get(url)
-        if r.status_code != 200:
-            print("SKIP")
-            continue
-        soup = BeautifulSoup(r.text, "html.parser")
-        found = _discover_links(soup, url)
-        for slug, u in found.items():
-            pages[slug] = {"url": u, "category": cat_name}
-        print(f"{len(found)} functions")
+        for slug in discovered.get(cat, []):
+            placement.setdefault(slug, CAT_FOLDER.get(cat, cat.replace("-functions", "")))
 
-    total = len(pages)
-    ok = skip = 0
-    failed: list[str] = []
-    print(f"\n  Fetching {total} function pages ...")
-    for i, (slug, info) in enumerate(sorted(pages.items()), 1):
-        d = FUNCS_OUT / info["category"]
-        d.mkdir(exist_ok=True)
-        out = d / f"{slug}.md"
-        if out.exists() and not force:
-            print(f"    [{i}/{total}] {slug} (cached)")
-            skip += 1
-            continue
-        if _fetch_page(url=info["url"], out_path=out):
-            print(f"    [{i}/{total}] {slug} OK")
-            ok += 1
-        else:
-            print(f"    [{i}/{total}] {slug} -- 404/empty")
-            failed.append(slug)
-
-    print(f"\n  Functions: {ok} fetched, {skip} cached, {len(failed)} missing")
-    if failed:
-        print(f"  Missing: {', '.join(failed)}")
-    return pages
+    print(f"\n  Checking {len(placement)} candidate pages ...")
+    for slug in sorted(placement):
+        save_page(pages[slug], FUNCS_OUT / placement[slug] / f"{slug}.md", stats,
+                  expect_type=TYPE_FUNCTION, **kw)
+    if prune:
+        prune_dir(FUNCS_OUT, {f"{placement[s]}/{s}.md" for s in placement})
+    print(stats.line("Functions"))
 
 
-# ── Error Codes ──────────────────────────────────────────────────────────
-
-def fetch_errors(*, force: bool = False):
-    out = HERE / "error-codes.md"
-    if out.exists() and not force:
-        print("  error-codes.md (cached)")
+def fetch_errors(pages: dict[str, dict], stats: Stats, **kw) -> None:
+    entry = pages.get("error-codes")
+    if entry is None:
+        print("  error-codes not found in index")
         return
-    print("  Fetching error codes ... ", end="", flush=True)
-    if _fetch_page(BASE_URL + "error-codes.html", out, keep_examples=True):
-        print("OK")
-    else:
-        print("FAILED")
+    kw = dict(kw, keep_examples=True)  # the page is one big table; keep it whole
+    save_page(entry, ERRORS_OUT, stats, **kw)
+    print(stats.line("Error codes"))
 
 
-# ── Cross-reference report ───────────────────────────────────────────────
-
-def cross_reference(step_slugs: dict[str, str]):
-    """Compare XML files against discovered doc slugs and report gaps."""
-    if not SNIPPETS.is_dir():
-        print("  Snippet directory not found; skipping cross-reference.")
-        return
-
-    # Build slug → xml-path mapping
-    xml_slugs: dict[str, Path] = {}
-    for xml_file in sorted(SNIPPETS.rglob("*.xml")):
-        name = _read_step_name(xml_file) or xml_file.stem
-        slug = _step_name_to_slug(name)
-        xml_slugs[slug] = xml_file
-
-    # Slugs that have a doc but no XML file
-    doc_files = {p.stem for p in STEPS_OUT.glob("*.md")}
-    docs_only = doc_files - set(xml_slugs.keys())
-    # Slugs that have an XML file but no doc
-    xml_only = set(xml_slugs.keys()) - doc_files
-
-    if docs_only:
-        print("\n  Doc pages with no matching XML file:")
-        for s in sorted(docs_only):
-            print(f"    - {s}")
-    if xml_only:
-        print("\n  XML files with no matching doc page:")
-        for s in sorted(xml_only):
-            print(f"    - {s}  ({xml_slugs[s].relative_to(SNIPPETS)})")
-    if not docs_only and not xml_only:
-        print("\n  All XML files matched to doc pages.")
+def fetch_guides(index: dict, doc_sets: list[str], stats: Stats, **kw) -> None:
+    for doc_set in doc_sets:
+        pages = index.get(doc_set)
+        if not pages:
+            print(f"  {doc_set} -- not in index, skipped")
+            continue
+        sub = Stats()
+        print(f"  {doc_set}: {len(pages)} pages")
+        for slug in sorted(pages):
+            save_page(pages[slug], GUIDES_OUT / doc_set / f"{slug}.md", sub, **kw)
+        print(sub.line(f"    {doc_set}"))
+        stats.fetched += sub.fetched
+        stats.cached += sub.cached
+        stats.missing.extend(sub.missing)
+    print(stats.line("Guides"))
 
 
-# ── Main ─────────────────────────────────────────────────────────────────
+# -- Main -----------------------------------------------------------------
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Fetch FileMaker reference documentation"
+        description="Fetch Claris FileMaker reference documentation as Markdown",
     )
     ap.add_argument("--steps", action="store_true", help="Fetch script steps")
     ap.add_argument("--functions", action="store_true", help="Fetch functions")
     ap.add_argument("--errors", action="store_true", help="Fetch error codes")
-    ap.add_argument("--all", action="store_true", help="Fetch everything")
     ap.add_argument(
-        "--force", action="store_true",
-        help="Re-download even if .md already exists",
+        "--guides", nargs="*", metavar="DOC_SET",
+        help=f"Fetch guide doc-sets (default: {', '.join(DEFAULT_GUIDES)})",
     )
+    ap.add_argument("--all", action="store_true", help="Fetch everything, guides included")
+    ap.add_argument("--locale", default="en", help="Documentation locale (default: en)")
+    ap.add_argument("--refresh", action="store_true",
+                    help="Re-fetch pages whose Claris date_modified has changed")
+    ap.add_argument("--force", action="store_true",
+                    help="Re-download every page, changed or not")
+    ap.add_argument("--prune", action="store_true",
+                    help="Delete generated pages that are no longer listed by Claris")
+    ap.add_argument("--keep-examples", action="store_true",
+                    help="Keep Example / Related topics / See also sections")
     args = ap.parse_args()
 
-    if not (args.steps or args.functions or args.errors):
-        args.all = True
+    want_guides = args.all or args.guides is not None
+    if not (args.steps or args.functions or args.errors or want_guides):
+        args.steps = args.functions = args.errors = True
 
-    step_slugs: dict[str, str] = {}
+    kw = dict(force=args.force, refresh=args.refresh, keep_examples=args.keep_examples)
+
+    print("== Index ==")
+    index = load_index(args.locale)
+    pro_help = index.get("pro-help", {})
+    if not pro_help and (args.all or args.steps or args.functions or args.errors):
+        sys.exit("The index contains no pro-help pages; nothing to do.")
+    print()
 
     if args.all or args.steps:
         print("== Script Steps ==")
-        step_slugs = fetch_steps(force=args.force)
+        fetch_steps(pro_help, Stats(), prune=args.prune, **kw)
         print()
 
     if args.all or args.functions:
         print("== Functions ==")
-        fetch_functions(force=args.force)
+        fetch_functions(pro_help, Stats(), prune=args.prune, **kw)
         print()
 
     if args.all or args.errors:
         print("== Error Codes ==")
-        fetch_errors(force=args.force)
+        fetch_errors(pro_help, Stats(), **kw)
         print()
 
-    if step_slugs:
-        print("== Cross-Reference ==")
-        cross_reference(step_slugs)
+    if want_guides:
+        doc_sets = args.guides if args.guides else DEFAULT_GUIDES
+        print("== Guides ==")
+        fetch_guides(index, doc_sets, Stats(), **kw)
         print()
 
     print("Done.")
