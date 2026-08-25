@@ -145,7 +145,11 @@ mkdir -p "$CONTEXT_DIR"
 # Discover solutions to process
 # ---------------------------------------------------------------------------
 if [[ -z "$SOLUTION_NAME" ]]; then
-    mapfile -t SOLUTIONS < <(
+    # Avoid `mapfile` — it requires bash 4+, and macOS ships bash 3.2.
+    SOLUTIONS=()
+    while IFS= read -r _solution_line; do
+        SOLUTIONS+=("$_solution_line")
+    done < <(
         find "$XML_PARSED_DIR" -mindepth 2 -maxdepth 2 -type d \
             | sed 's|.*/||' | sort -u
     )
@@ -182,58 +186,74 @@ for SOLUTION in "${SOLUTIONS[@]}"; do
         echo "# TableName|TableID|FieldName|FieldID|DataType|FieldType|AutoEnter|Flags"
 
         if [[ -d "$XML_PARSED_DIR/tables/$SOLUTION" ]]; then
-        find "$XML_PARSED_DIR/tables/$SOLUTION" -name '*.xml' -type f 2>/dev/null | sort | while IFS= read -r file; do
-            table_name=$(xval 'string(/FieldCatalog/BaseTableReference/@name)' "$file")
-            table_id=$(xval 'string(/FieldCatalog/BaseTableReference/@id)' "$file")
+        # Single Python pass per table (xml.etree) instead of one xmllint call
+        # per field/attribute. Orders of magnitude faster on large tables, and it
+        # flattens carriage returns (FileMaker calcs separate lines with Char 13,
+        # not \n) so a multi-line calc cannot spill a field across several index
+        # lines. Output format is identical to the previous xmllint-based loop.
+        python3 - "$XML_PARSED_DIR/tables/$SOLUTION" <<'PYFIELDS'
+import sys, os, glob
+import xml.etree.ElementTree as ET
 
-            field_count=$(xval 'count(//Field)' "$file")
-            field_count=${field_count:-0}
+tables_dir = sys.argv[1]
 
-            for ((i=1; i<=field_count; i++)); do
-                fname=$(xval "string(//Field[$i]/@name)" "$file")
-                fid=$(xval "string(//Field[$i]/@id)" "$file")
-                dtype=$(xval "string(//Field[$i]/@datatype)" "$file")
-                ftype=$(xval "string(//Field[$i]/@fieldtype)" "$file")
 
-                # Auto-enter: prefer the calculation text, fall back to the type attribute
-                auto_enter=""
-                auto_type=$(xval "string(//Field[$i]/AutoEnter/@type)" "$file")
-                if [[ "$auto_type" == "Calculated" ]]; then
-                    auto_calc=$(xval "string(//Field[$i]/AutoEnter/Calculated/Calculation/Text)" "$file")
-                    # Collapse multi-line calcs to single line (preserve readability)
-                    auto_calc=$(echo "$auto_calc" | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
-                    auto_enter="auto:${auto_calc}"
-                elif [[ -n "$auto_type" ]]; then
-                    auto_enter="auto:${auto_type}"
-                fi
+def flatten(node):
+    # Concatenate all text (matches xmllint string()), then collapse every
+    # whitespace run - including \r and \n - to a single space and trim.
+    if node is None:
+        return ""
+    text = "".join(node.itertext())
+    return " ".join(text.replace("\r", " ").replace("\n", " ").split())
 
-                # For calculated fields, extract the calculation formula
-                if [[ "$ftype" == "Calculated" && -z "$auto_enter" ]]; then
-                    calc_text=$(xval "string(//Field[$i]/Calculation/Text)" "$file")
-                    if [[ -n "$calc_text" ]]; then
-                        calc_text=$(echo "$calc_text" | tr '\n' ' ' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
-                        auto_enter="calc:${calc_text}"
-                    fi
-                fi
 
-                # Flags: collect validation and storage flags
-                flags=""
-                not_empty=$(xval "string(//Field[$i]/Validation/@notEmpty)" "$file")
-                unique=$(xval "string(//Field[$i]/Validation/@unique)" "$file")
-                global=$(xval "string(//Field[$i]/Storage/@global)" "$file")
-                stored=$(xval "string(//Field[$i]/Storage/@storeCalculationResults)" "$file")
+for file in sorted(glob.glob(os.path.join(tables_dir, "*.xml"))):
+    try:
+        root = ET.parse(file).getroot()
+    except ET.ParseError:
+        continue
+    btr = root.find("BaseTableReference")
+    table_name = btr.get("name", "") if btr is not None else ""
+    table_id = btr.get("id", "") if btr is not None else ""
+    for field in root.iter("Field"):
+        fname = field.get("name", "")
+        fid = field.get("id", "")
+        dtype = field.get("datatype", "")
+        ftype = field.get("fieldtype", "")
 
-                [[ "$not_empty" == "True" ]] && flags="${flags}notEmpty,"
-                [[ "$unique" == "True" ]] && flags="${flags}unique,"
-                [[ "$global" == "True" ]] && flags="${flags}global,"
-                [[ "$stored" == "False" ]] && flags="${flags}unstored,"
+        # Auto-enter: prefer the calculation text, fall back to the type attribute
+        auto_enter = ""
+        ae = field.find("AutoEnter")
+        auto_type = ae.get("type", "") if ae is not None else ""
+        if auto_type == "Calculated":
+            auto_enter = "auto:" + flatten(ae.find("Calculated/Calculation/Text"))
+        elif auto_type:
+            auto_enter = "auto:" + auto_type
 
-                # Trim trailing comma
-                flags="${flags%,}"
+        # For calculated fields, extract the calculation formula
+        if ftype == "Calculated" and not auto_enter:
+            calc_text = flatten(field.find("Calculation/Text"))
+            if calc_text:
+                auto_enter = "calc:" + calc_text
 
-                echo "${table_name}|${table_id}|${fname}|${fid}|${dtype}|${ftype}|${auto_enter}|${flags}"
-            done
-        done
+        # Flags: collect validation and storage flags
+        flags = []
+        val = field.find("Validation")
+        if val is not None:
+            if val.get("notEmpty") == "True":
+                flags.append("notEmpty")
+            if val.get("unique") == "True":
+                flags.append("unique")
+        sto = field.find("Storage")
+        if sto is not None:
+            if sto.get("global") == "True":
+                flags.append("global")
+            if sto.get("storeCalculationResults") == "False":
+                flags.append("unstored")
+
+        print("|".join([table_name, table_id, fname, fid, dtype, ftype,
+                        auto_enter, ",".join(flags)]))
+PYFIELDS
         fi
     } > "$SOLUTION_CONTEXT_DIR/fields.index"
 
@@ -392,7 +412,7 @@ for SOLUTION in "${SOLUTIONS[@]}"; do
     #   functional       – everything else
     # ---------------------------------------------------------------------------
     {
-        echo "# FunctionName|FunctionID|Parameters|Access|Display|Category"
+        echo "# FunctionName|FunctionID|Parameters|Access|Display|Category|FolderPath"
 
         STUB_DIR="$XML_PARSED_DIR/custom_function_stubs/$SOLUTION"
         SANITIZED_DIR="$XML_PARSED_DIR/custom_functions_sanitized/$SOLUTION"
@@ -403,6 +423,8 @@ for SOLUTION in "${SOLUTIONS[@]}"; do
             cf_id=$(xval 'string(/CustomFunction/@id)' "$file")
             cf_access=$(xval 'string(/CustomFunction/@access)' "$file")
             cf_display=$(xval 'string(/CustomFunction/Display)' "$file")
+
+            folder_path=$(get_folder_path "$file" "$XML_PARSED_DIR/custom_function_stubs")
 
             # Extract parameter names from stub
             param_count=$(xval 'string(/CustomFunction/ObjectList/@membercount)' "$file")
@@ -418,9 +440,13 @@ for SOLUTION in "${SOLUTIONS[@]}"; do
                 done
             fi
 
-            # Classify using the sanitized body
+            # Classify using the sanitized body — derive the body path from the
+            # stub path so nested-in-folder CFs resolve correctly (flat lookup
+            # silently misses them and leaves every folder-nested CF mis-
+            # classified as "functional").
             category="functional"
-            txt_file="$SANITIZED_DIR/${cf_name} - ID ${cf_id}.txt"
+            stub_rel="${file#"$STUB_DIR/"}"
+            txt_file="$SANITIZED_DIR/${stub_rel%.xml}.txt"
 
             if [[ -f "$txt_file" ]]; then
                 body=$(<"$txt_file")
@@ -451,7 +477,7 @@ for SOLUTION in "${SOLUTIONS[@]}"; do
                 fi
             fi
 
-            echo "${cf_name}|${cf_id}|${params}|${cf_access}|${cf_display}|${category}"
+            echo "${cf_name}|${cf_id}|${params}|${cf_access}|${cf_display}|${category}|${folder_path}"
         done
         fi
     } > "$SOLUTION_CONTEXT_DIR/custom_functions.index"

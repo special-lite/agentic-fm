@@ -231,6 +231,51 @@ Note that `pb.clearContents()` is required before writing — without it, stale 
 
 ---
 
+## Windows clipboard (WSL2)
+
+FileMaker Pro on Windows registers the same four-letter class codes as custom Windows clipboard formats, prefixed with `Mac-` following Apple's Carbon cross-platform clipboard convention (used by FileMaker since FM7).
+
+| macOS class | Windows format name |
+|-------------|---------------------|
+| `XMSS`      | `Mac-XMSS`          |
+| `XMSC`      | `Mac-XMSC`          |
+| `XML2`      | `Mac-XML2`          |
+| `XMFD`      | `Mac-XMFD`          |
+| `XMFN`      | `Mac-XMFN`          |
+| `XMTB`      | `Mac-XMTB`          |
+| `XMVL`      | `Mac-XMVL`          |
+| `XMTH`      | `Mac-XMTH`          |
+| `ut16`      | `Mac-ut16`          |
+
+The data payload differs from macOS: FileMaker on Windows prepends a 4-byte little-endian `uint32` length field before the UTF-8 XML, and omits the XML declaration:
+
+```
+[4 bytes LE uint32 = N]  [N bytes UTF-8 XML starting with <fmxmlsnippet>]
+```
+
+On macOS the payload is plain UTF-8 XML with no prefix or length field.
+
+### clipboard_win.py
+
+`agent/scripts/clipboard_win.py` provides the same `read` / `write` / `detect` interface as `clipboard.py` but runs on WSL2. It delegates clipboard operations to `powershell.exe` via a temp `.ps1` file written to the Windows TEMP directory (so `powershell.exe` can read it — WSL2 paths are not directly accessible to Windows executables). The PowerShell script P/Invokes `user32.dll` / `kernel32.dll` to call `RegisterClipboardFormat`, `SetClipboardData`, and `GetClipboardData`.
+
+```bash
+# Write XML to Windows clipboard (class auto-detected)
+python3 agent/scripts/clipboard_win.py write agent/sandbox/myscript.xml
+
+# Read FM objects from Windows clipboard
+python3 agent/scripts/clipboard_win.py read agent/sandbox/output.xml
+
+# List all custom clipboard formats -- run after copying from FM to verify format names
+python3 agent/scripts/clipboard_win.py detect
+```
+
+If FileMaker does not accept the paste, run `detect` after copying a script step from FM Pro to see the exact format name registered on your installation. Pass the observed prefix via `--format-prefix` if it differs from `Mac-`.
+
+The companion server automatically uses `clipboard_win.py` on Linux (WSL2) and `clipboard.py` on macOS — no configuration needed.
+
+---
+
 ## Reference
 
 The approach above is derived from [FmClipTools](https://github.com/DanShockley/FmClipTools) by Daniel A. Shockley and Erik Shagdar, which provides a complete AppleScript library for FileMaker clipboard operations including batch conversion, prettifying, and class detection.

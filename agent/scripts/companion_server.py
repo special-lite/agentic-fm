@@ -20,6 +20,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -35,9 +36,23 @@ from socketserver import ThreadingMixIn
 # Constants
 # ---------------------------------------------------------------------------
 
+# Built-in defaults — the bottom of the resolution chain, used when neither a
+# CLI flag, an env var, nor companion.json supplies a value (so the server always
+# boots). See "Resolution precedence" in agent/docs/COMPANION_SERVER.md.
+DEFAULT_BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-BIND_HOST = os.environ.get("COMPANION_BIND_HOST", "127.0.0.1")
+DEFAULT_ADVERTISE_HOST = "local.hub"
+# Idle auto-shutdown: seconds with no requests before the server exits.
+# 0 disables it (always-on) — the default, so existing behaviour is unchanged.
+DEFAULT_IDLE_TIMEOUT = 0
 REMOTE_VERSION_URL = "https://raw.githubusercontent.com/petrowsky/agentic-fm/main/version.txt"
+
+# Canonical companion config (agent/config/companion.json). Optional and gitignored;
+# absent/invalid → built-in defaults. It is the single source of truth for the
+# server's bind host/port and the address clients use to reach it.
+COMPANION_CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "config", "companion.json"
+)
 
 # Read version from version.txt at the repo root
 def _read_local_version() -> str:
@@ -52,6 +67,82 @@ def _read_local_version() -> str:
 VERSION = _read_local_version()
 
 # ---------------------------------------------------------------------------
+# Path helpers (WSL2 / Windows compatibility)
+# ---------------------------------------------------------------------------
+
+def _wsl_translate_path(path: str) -> str:
+    """Translate FileMaker's Windows-POSIX paths (/C:/...) to WSL2 mount points (/mnt/c/...).
+
+    FileMaker on Windows uses ConvertFromFileMakerPath(...; 1) which produces paths
+    like /C:/Users/... instead of the WSL2 equivalent /mnt/c/Users/...
+    """
+    m = re.match(r"^/([A-Za-z]):(.*)", path)
+    if m:
+        drive = m.group(1).lower()
+        rest = m.group(2)
+        return f"/mnt/{drive}{rest}"
+    return path
+
+
+def _load_automation_config() -> dict:
+    """Load agent/config/automation.json relative to this script, if present."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(here, "..", "config", "automation.json")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+_automation_config: dict = _load_automation_config()
+
+
+def _resolve_export_path_for_wsl(solution_name: str) -> str:
+    """Resolve the FM export file path when FileMaker sends '?' on WSL2.
+
+    FileMaker on Windows exports via Get(DesktopPath) & Get(FileName) & ".xml".
+    When ConvertFromFileMakerPath fails (returns '?'), we reconstruct the path
+    by querying Windows for the actual Desktop shell folder via PowerShell
+    (handles OneDrive-redirected Desktops), then converting with wslpath.
+
+    Falls back to export_dir_override in automation.json if auto-detection fails.
+    """
+    # Config override takes precedence — skip auto-detection entirely
+    export_dir = _automation_config.get("export_dir_override", "")
+    if export_dir:
+        path = os.path.join(os.path.expanduser(export_dir), f"{solution_name}.xml")
+        log.info("Using export_dir_override from automation.json: %r", path)
+        return path
+
+    # Auto-detect via PowerShell + wslpath (WSL2 only).
+    # GetFolderPath('Desktop') resolves OneDrive-redirected Desktops correctly;
+    # a simple USERPROFILE\Desktop approach misses this common Windows setup.
+    try:
+        r1 = subprocess.run(
+            [
+                "powershell.exe", "-NoProfile", "-Command",
+                "[Environment]::GetFolderPath('Desktop')",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r1.returncode == 0:
+            win_desktop = r1.stdout.strip()  # e.g. C:\Users\pchov\OneDrive\Desktop
+            r2 = subprocess.run(
+                ["wslpath", win_desktop],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r2.returncode == 0:
+                wsl_desktop = r2.stdout.strip()  # e.g. /mnt/c/Users/pchov/OneDrive/Desktop
+                path = os.path.join(wsl_desktop, f"{solution_name}.xml")
+                log.info("Auto-detected WSL2 export path via PowerShell+wslpath: %r", path)
+                return path
+    except Exception as exc:
+        log.warning("WSL2 export path auto-detection failed: %s", exc)
+
+    return ""
+
+# ---------------------------------------------------------------------------
 # Webviewer process state (module-level, shared across request threads)
 # ---------------------------------------------------------------------------
 
@@ -63,6 +154,174 @@ _webviewer_lock = threading.Lock()
 # Shape: {"target": str, "auto_save": bool}
 _pending_job: dict = {}
 _pending_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Plug-in capability detection (the AgenticFM commercial plug-in, optional)
+# ---------------------------------------------------------------------------
+#
+# The companion is the single detection broker for the OSS agent. It stats the
+# plug-in's macOS Application Support tree (the *installed?* precondition),
+# reads the address + bearer token published in preferences.json, then probes
+# the plug-in's token-free GET /api/health to resolve the *usable?* verdict
+# (installed + reachable + licensed). The result is surfaced in /health.plugin
+# so the agent makes exactly one detection call. The verdict is cached briefly
+# so repeated /health hits do not re-probe the plug-in on every request.
+#
+# This is detection only — nothing here makes any OSS feature depend on the
+# plug-in. When the plug-in is absent or not usable, the block reports it and
+# the agent stays on the pure OSS path.
+
+# NOTE: intentionally a fixed macOS platform path, NOT configurable via companion.json.
+# It has exactly one correct value; only `~` varies, resolving to the macOS user running
+# the companion — which must be the same user running FileMaker + the plug-in. A relocated
+# or cross-user path is a deployment error to document, not a knob. See the plug-in
+# detection note in agent/docs/COMPANION_SERVER.md.
+APP_SUPPORT_DIR = os.path.expanduser("~/Library/Application Support/AgenticFM")
+_PLUGIN_CACHE_TTL = 60.0  # seconds; plug-in's own license heartbeat is far slower
+_plugin_cache: dict = {}
+_plugin_cache_ts: float = 0.0
+_plugin_lock = threading.Lock()
+
+# Behavior gates the plug-in enforces on mutating operations — surfaced so the
+# OSS agent can respect them rather than stacking a redundant confirmation.
+_PLUGIN_GATE_KEYS = (
+    "agenticActions", "scriptExecution", "scriptModification",
+    "schemaModification", "uiInteraction", "hostCapture",
+)
+
+
+def _plugin_http_get_json(url: str, token: str = "", timeout: int = 3) -> dict:
+    """GET a JSON document from the plug-in's HTTP server. Raises on failure."""
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _plugin_read_preferences() -> dict:
+    """Read the plug-in's preferences.json (address, token, gates, bindings)."""
+    path = os.path.join(APP_SUPPORT_DIR, "preferences.json")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _plugin_enumerate_solutions() -> list:
+    """Enumerate indexed solutions under solutions/<key>/manifest.json."""
+    solutions = []
+    sol_dir = os.path.join(APP_SUPPORT_DIR, "solutions")
+    if not os.path.isdir(sol_dir):
+        return solutions
+    for key in sorted(os.listdir(sol_dir)):
+        manifest_path = os.path.join(sol_dir, key, "manifest.json")
+        if not os.path.isfile(manifest_path):
+            continue
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+        except (OSError, ValueError):
+            continue
+        solutions.append({
+            "key": key,
+            "name": manifest.get("solutionName", ""),
+            "catalog": os.path.join(sol_dir, key),
+            "files": manifest.get("loaded", []),
+            "parsed_at": manifest.get("parsedAt") or manifest.get("parsed_at", ""),
+        })
+    return solutions
+
+
+def _probe_plugin() -> dict:
+    """Resolve the full plug-in capability block. Never raises.
+
+    Shape:
+      {
+        "installed": bool,            # App Support tree present
+        "usable": bool,               # installed AND reachable AND licensed
+        "server": {"reachable", "base", "token", "remote"},
+        "license": {"status", "licensed", ...},
+        "solutions": [ {key, name, catalog, files, parsed_at}, ... ],
+        "repoPath"?, "catalogBaseUrl"?, "gates"?
+      }
+    """
+    block = {"installed": False, "usable": False,
+             "server": {}, "license": {}, "solutions": []}
+
+    if not os.path.isdir(APP_SUPPORT_DIR):
+        return block
+    block["installed"] = True
+
+    try:
+        prefs = _plugin_read_preferences()
+    except (OSError, ValueError):
+        prefs = {}
+
+    if prefs.get("repoPath"):
+        block["repoPath"] = prefs["repoPath"]
+    if prefs.get("catalogBaseUrl"):
+        block["catalogBaseUrl"] = prefs["catalogBaseUrl"]
+    gates = {k: prefs[k] for k in _PLUGIN_GATE_KEYS if k in prefs}
+    if gates:
+        block["gates"] = gates
+
+    # Remote access is the supported posture: a stable port + token in
+    # preferences.json. (Localhost-only random-port mode is not targeted.)
+    port = prefs.get("remoteAccessPort", 8766)
+    token = prefs.get("remoteAccessToken", "")
+    remote_on = bool(prefs.get("allowRemoteAccess")) and bool(prefs.get("remoteAccessConfirmed"))
+    base = f"http://127.0.0.1:{port}"
+    block["server"] = {"reachable": False, "base": base, "token": token, "remote": remote_on}
+
+    # Token-free GET /api/health carries the verdict: licensed + licenseStatus.
+    try:
+        health = _plugin_http_get_json(f"{base}/api/health", timeout=3)
+        block["server"]["reachable"] = True
+        licensed = bool(health.get("licensed"))
+        lic = {"status": health.get("licenseStatus", ""), "licensed": licensed}
+        # Pull richer detail (daysRemaining etc.) — exempt, best-effort.
+        try:
+            detail = _plugin_http_get_json(f"{base}/api/license", token=token, timeout=3)
+            for k in ("status", "edition", "sub", "exp", "daysRemaining"):
+                if k in detail:
+                    lic[k] = detail[k]
+        except Exception:
+            pass
+        block["license"] = lic
+        block["usable"] = bool(licensed)
+    except Exception:
+        # Installed but server not reachable (or down) — not usable.
+        block["license"] = {"status": "unknown", "licensed": False}
+        block["usable"] = False
+
+    # Broker the plug-in's self-describing endpoint suite. GET /api/discover is
+    # token-free (exempt) and returns the *live*, license-gated catalog: the
+    # full endpoint suite when usable, a shrunk list + purchaseUrl when locked.
+    # The OSS agent reads this to choose endpoints for the task at hand rather
+    # than assuming a fixed set — so the integration never hardcodes (or rots
+    # against) the plug-in's API surface. Surfaced even when not usable so the
+    # locked-state purchaseUrl is available for the lapsed-license nudge.
+    if block["server"].get("reachable"):
+        try:
+            block["discover"] = _plugin_http_get_json(f"{base}/api/discover", timeout=3)
+        except Exception:
+            pass
+
+    block["solutions"] = _plugin_enumerate_solutions()
+    return block
+
+
+def _check_plugin(force: bool = False) -> dict:
+    """Return the plug-in capability block, cached ~60 s. Never raises."""
+    global _plugin_cache, _plugin_cache_ts
+    with _plugin_lock:
+        now = time.monotonic()
+        if not force and _plugin_cache and (now - _plugin_cache_ts) < _PLUGIN_CACHE_TTL:
+            return _plugin_cache
+        block = _probe_plugin()
+        _plugin_cache = block
+        _plugin_cache_ts = now
+        return block
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -154,6 +413,37 @@ def _run_command_streaming(cmd, *, cwd, env, label):
 
 
 # ---------------------------------------------------------------------------
+# Idle activity tracking
+# ---------------------------------------------------------------------------
+
+_last_activity = time.monotonic()
+_activity_lock = threading.Lock()
+
+
+def _touch_activity() -> None:
+    global _last_activity
+    with _activity_lock:
+        _last_activity = time.monotonic()
+
+
+def _seconds_since_activity() -> float:
+    with _activity_lock:
+        return time.monotonic() - _last_activity
+
+
+def _idle_watchdog(server, idle_timeout: int) -> None:
+    """Shut the server down after idle_timeout seconds with no requests."""
+    check_interval = min(30, idle_timeout)
+    while True:
+        time.sleep(check_interval)
+        idle = _seconds_since_activity()
+        if idle >= idle_timeout:
+            log.info("Idle for %.0fs (timeout %ds) — shutting down.", idle, idle_timeout)
+            server.shutdown()  # unblocks serve_forever() in the main thread
+            return
+
+
+# ---------------------------------------------------------------------------
 # Threading HTTP server (handles concurrent requests)
 # ---------------------------------------------------------------------------
 
@@ -177,6 +467,12 @@ class CompanionHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def do_GET(self):
+        # /health is a liveness probe — used by monitors and the status-bar
+        # marker, which poll it continuously. It must NOT count as activity, or
+        # that polling would keep the idle watchdog from ever firing and defeat
+        # the auto-shutdown. Every other endpoint is real work and does count.
+        if self.path != "/health":
+            _touch_activity()
         if self.path == "/health":
             self._handle_health()
         elif self.path == "/pending":
@@ -188,10 +484,13 @@ class CompanionHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/preview/"):
             layout_name = self.path[len("/preview/"):]
             self._handle_preview_get(layout_name)
+        elif self.path.startswith("/plugin/"):
+            self._handle_plugin_proxy("GET", self.path[len("/plugin/"):])
         else:
             self._send_json({"error": "Not found"}, status=404)
 
     def do_POST(self):
+        _touch_activity()
         if self.path == "/explode":
             self._handle_explode()
         elif self.path == "/context":
@@ -215,6 +514,8 @@ class CompanionHandler(BaseHTTPRequestHandler):
         elif self.path.startswith("/preview/"):
             layout_name = self.path[len("/preview/"):]
             self._handle_preview_post(layout_name)
+        elif self.path.startswith("/plugin/"):
+            self._handle_plugin_proxy("POST", self.path[len("/plugin/"):])
         else:
             self._send_json({"error": "Not found"}, status=404)
 
@@ -223,7 +524,59 @@ class CompanionHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def _handle_health(self):
-        self._send_json({"status": "ok", "version": VERSION})
+        self._send_json({"status": "ok", "version": VERSION, "plugin": _check_plugin()})
+
+    def _handle_plugin_proxy(self, method: str, subpath: str):
+        """Thin pass-through to the plug-in's HTTP server, bearer token injected.
+
+        Optional convenience for constrained environments (e.g. a container that
+        can reach the companion but not the plug-in's port) and to keep a single
+        base URL. Direct plug-in access is the baseline; this proxy is inert
+        until explicitly called. Refuses with 502 when the plug-in is not usable,
+        so the agent's fallback stays self-enforcing.
+        """
+        block = _check_plugin()
+        if not block.get("usable"):
+            self._send_json(
+                {"success": False, "error": "Plug-in not usable",
+                 "plugin": {"installed": block.get("installed", False), "usable": False}},
+                status=502,
+            )
+            return
+
+        server = block.get("server", {})
+        base = server.get("base", "").rstrip("/")
+        token = server.get("token", "")
+        url = f"{base}/{subpath}"
+
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        body = None
+        if method == "POST":
+            body = self._read_body()
+            headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
+
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read()
+                status = resp.status
+                ctype = resp.headers.get("Content-Type", "application/json; charset=utf-8")
+        except urllib.error.HTTPError as exc:
+            raw = exc.read()
+            status = exc.code
+            ctype = exc.headers.get("Content-Type", "application/json; charset=utf-8")
+        except Exception as exc:
+            log.warning("Plug-in proxy to %s failed: %s", url, exc)
+            self._send_json({"success": False, "error": f"Proxy failed: {exc}"}, status=502)
+            return
+
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
 
     def _handle_explode(self):
         # Read and parse request body
@@ -261,6 +614,65 @@ class CompanionHandler(BaseHTTPRequestHandler):
         # Expand ~ in paths
         repo_path = os.path.expanduser(repo_path)
         export_file_path = os.path.expanduser(export_file_path)
+
+        # Translate Windows-POSIX paths (/C:/...) to WSL2 mount points (/mnt/c/...).
+        # FileMaker on Windows uses ConvertFromFileMakerPath(...; 1) which produces
+        # paths like /C:/Users/... that are invalid in WSL2.
+        export_file_path = _wsl_translate_path(export_file_path)
+        repo_path = _wsl_translate_path(repo_path)
+
+        # If repo_path is "?" it means FileMaker's ConvertFromFileMakerPath failed —
+        # this happens on WSL2 when the repo lives on the WSL filesystem and FileMaker
+        # on Windows cannot convert the \\wsl.localhost\... UNC path to a POSIX path.
+        # Fall back to repo_path_override from agent/config/automation.json.
+        if repo_path == "?":
+            override = _automation_config.get("repo_path_override", "")
+            if override:
+                repo_path = os.path.expanduser(override)
+                log.info(
+                    "repo_path was '?' — using repo_path_override from automation.json: %r",
+                    repo_path,
+                )
+            else:
+                self._send_json(
+                    {
+                        "success": False,
+                        "exit_code": -1,
+                        "error": (
+                            "repo_path is '?' — FileMaker could not convert the repo path to POSIX "
+                            "(common on WSL2 when the repo is on the WSL filesystem). "
+                            "Add 'repo_path_override' to agent/config/automation.json with the "
+                            "absolute POSIX path to your agentic-fm folder (e.g. /home/user/agentic-fm). "
+                            "See agent/docs/SANDBOXED_ENVIRONMENT.md for details."
+                        ),
+                    },
+                    status=400,
+                )
+                return
+
+        # If export_file_path is "?" FileMaker's ConvertFromFileMakerPath failed to
+        # produce a POSIX path for the Windows Desktop location. Reconstruct it from
+        # the Windows USERPROFILE env var via cmd.exe + wslpath, or from automation.json.
+        if export_file_path == "?":
+            resolved = _resolve_export_path_for_wsl(solution_name)
+            if resolved:
+                export_file_path = resolved
+            else:
+                self._send_json(
+                    {
+                        "success": False,
+                        "exit_code": -1,
+                        "error": (
+                            "export_file_path is '?' — FileMaker could not convert the Desktop path to POSIX "
+                            "and WSL2 auto-detection failed. "
+                            "Add 'export_dir_override' to agent/config/automation.json with the WSL2 path "
+                            "to your Windows Desktop (e.g. \"/mnt/c/Users/<you>/Desktop\"). "
+                            "See agent/docs/SANDBOXED_ENVIRONMENT.md for details."
+                        ),
+                    },
+                    status=400,
+                )
+                return
 
         # Build environment for subprocess
         env = os.environ.copy()
@@ -505,7 +917,7 @@ class CompanionHandler(BaseHTTPRequestHandler):
             self._send_json({"success": False, "error": str(exc)}, status=500)
 
     def _handle_clipboard(self):
-        """Accept XML content and write it to the macOS clipboard via clipboard.py."""
+        """Accept XML content and write it to the clipboard via clipboard.py (macOS) or clipboard_win.py (WSL2/Windows)."""
         try:
             body = self._read_body()
             payload = json.loads(body)
@@ -518,9 +930,16 @@ class CompanionHandler(BaseHTTPRequestHandler):
             self._send_json({"success": False, "error": "Missing required field: xml"}, status=400)
             return
 
+        import platform
         import tempfile
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        clipboard_py = os.path.join(script_dir, "clipboard.py")
+
+        # On Linux (WSL2), delegate to clipboard_win.py which uses powershell.exe.
+        # On macOS, use the original clipboard.py (osascript / NSPasteboard path).
+        if platform.system() == "Linux":
+            clipboard_py = os.path.join(script_dir, "clipboard_win.py")
+        else:
+            clipboard_py = os.path.join(script_dir, "clipboard.py")
 
         try:
             with tempfile.NamedTemporaryFile(
@@ -541,7 +960,7 @@ class CompanionHandler(BaseHTTPRequestHandler):
             else:
                 log.error("Clipboard write failed: %s", result.stderr)
                 self._send_json(
-                    {"success": False, "error": result.stderr or "clipboard.py returned non-zero"},
+                    {"success": False, "error": result.stderr or "clipboard script returned non-zero"},
                     status=500,
                 )
         except Exception as exc:
@@ -848,45 +1267,117 @@ def _check_for_updates():
         pass  # No network, rate-limited, etc. — fail silently
 
 
+def _first_int(*candidates) -> int:
+    """Return the first candidate coercible to int, skipping None/'' and bad values."""
+    for c in candidates:
+        if c is None or c == "":
+            continue
+        try:
+            return int(c)
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def _load_companion_config() -> dict:
+    """Read the `companion` block from agent/config/companion.json.
+
+    Fail-open: an absent file returns {} silently (the common case); an unreadable
+    or malformed file warns and returns {}. Either way built-in defaults apply and
+    the server still boots. Mirrors deploy.py's _load_config discipline.
+    """
+    try:
+        with open(COMPANION_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        log.warning("Could not read companion.json (%s) — using built-in defaults.", exc)
+        return {}
+    comp = data.get("companion") if isinstance(data, dict) else None
+    return comp if isinstance(comp, dict) else {}
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="agentic-fm companion server — exposes fmparse.sh over HTTP for FileMaker.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    # Defaults are None so an unset flag falls through to env/companion.json/default
+    # in main()'s resolution; passing the flag pins the value at the top of the chain.
     parser.add_argument(
         "--port",
         type=int,
-        default=DEFAULT_PORT,
-        help=f"Port to listen on (default: {DEFAULT_PORT})",
+        default=None,
+        help=(
+            "Port to listen on. Overrides COMPANION_PORT and companion.json "
+            f"(default: {DEFAULT_PORT})."
+        ),
+    )
+    parser.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=None,
+        help=(
+            "Seconds of inactivity before the server shuts itself down. "
+            "0 disables auto-shutdown (always-on). Overrides COMPANION_IDLE_TIMEOUT "
+            f"and companion.json (default: {DEFAULT_IDLE_TIMEOUT})."
+        ),
     )
     return parser.parse_args()
 
 
+def _shutdown_cleanup(server):
+    server.server_close()
+    with _webviewer_lock:
+        if _webviewer_proc is not None and _webviewer_proc.poll() is None:
+            try:
+                pgid = os.getpgid(_webviewer_proc.pid)
+                os.killpg(pgid, signal.SIGTERM)
+                log.info("Stopped webviewer (process group %d)", pgid)
+            except Exception as exc:
+                log.warning("Failed to stop webviewer on shutdown: %s", exc)
+
+
 def main():
     args = parse_args()
-    port = args.port
+    comp = _load_companion_config()
 
-    server = ThreadingHTTPServer((BIND_HOST, port), CompanionHandler)
+    # Server-bind resolution (highest wins): CLI flag / env var → companion.json → default.
+    bind_host = (
+        os.environ.get("COMPANION_BIND_HOST")
+        or comp.get("bind_host")
+        or DEFAULT_BIND_HOST
+    )
+    port = _first_int(
+        args.port, os.environ.get("COMPANION_PORT"), comp.get("port"), DEFAULT_PORT
+    )
+    idle_timeout = _first_int(
+        args.idle_timeout, os.environ.get("COMPANION_IDLE_TIMEOUT"),
+        comp.get("idle_timeout_seconds"), DEFAULT_IDLE_TIMEOUT,
+    )
+    advertise_host = comp.get("advertise_host") or DEFAULT_ADVERTISE_HOST
 
-    log.info("companion_server v%s listening on %s:%d", VERSION, BIND_HOST, port)
+    server = ThreadingHTTPServer((bind_host, port), CompanionHandler)
+
+    log.info("companion_server v%s listening on %s:%d", VERSION, bind_host, port)
+    log.info("Clients reach it at http://%s:%d (advertise_host).", advertise_host, port)
     threading.Thread(target=_check_for_updates, daemon=True).start()
-    log.info("Endpoints: GET /health  GET /clipboard  GET /webviewer/status  GET /preview/<name>  POST /explode  POST /context  POST /clipboard  POST /trigger  POST /debug  POST /webviewer/start  POST /webviewer/stop  POST /webviewer/push  POST /preview/<name>")
+    if idle_timeout > 0:
+        log.info("Idle auto-shutdown: %ds with no requests.", idle_timeout)
+        threading.Thread(target=_idle_watchdog, args=(server, idle_timeout), daemon=True).start()
+    else:
+        log.info("Idle auto-shutdown: disabled (always-on).")
+    log.info("Endpoints: GET /health  GET /clipboard  GET /webviewer/status  GET /preview/<name>  GET|POST /plugin/<path>  POST /explode  POST /context  POST /clipboard  POST /trigger  POST /debug  POST /webviewer/start  POST /webviewer/stop  POST /webviewer/push  POST /preview/<name>")
     log.info("Press Ctrl-C to stop.")
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         log.info("Shutting down.")
-        server.server_close()
-        with _webviewer_lock:
-            if _webviewer_proc is not None and _webviewer_proc.poll() is None:
-                try:
-                    pgid = os.getpgid(_webviewer_proc.pid)
-                    os.killpg(pgid, signal.SIGTERM)
-                    log.info("Stopped webviewer (process group %d)", pgid)
-                except Exception as exc:
-                    log.warning("Failed to stop webviewer on shutdown: %s", exc)
+    finally:
+        _shutdown_cleanup(server)
 
 
 if __name__ == "__main__":

@@ -197,10 +197,19 @@
         "xmlAttr": "value",
         "required": false,
         "enumValues": [
-          "Object Name",
+          "Object",
           "Field",
           "URL"
-        ]
+        ],
+        "notes": "Attribute-bearing wrapper (G10): <Source value=\"Object\"><Calculation>$src</Calculation></Source>. The sibling Source-calc child nests inside via parentElement."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "calc",
+        "hrLabel": "Source",
+        "parentElement": "Source",
+        "required": false,
+        "notes": "The source reference (layout object name / field / URL) — nests inside the <Source> wrapper opened by the Source enum (G10)."
       },
       {
         "xmlElement": "Calculation",
@@ -763,6 +772,12 @@
     "selfClosing": false,
     "params": [
       {
+        "xmlElement": "Script",
+        "type": "script",
+        "hrLabel": "Script",
+        "required": false
+      },
+      {
         "xmlElement": "Action",
         "type": "enum",
         "hrLabel": "Action",
@@ -780,12 +795,6 @@
         "hrLabel": "Name",
         "wrapperElement": "Name",
         "parentElement": "Action",
-        "required": false
-      },
-      {
-        "xmlElement": "Script",
-        "type": "script",
-        "hrLabel": "Script",
         "required": false
       },
       {
@@ -923,6 +932,18 @@
     "selfClosing": false,
     "params": [
       {
+        "xmlElement": "Calculation",
+        "type": "calculation",
+        "hrLabel": "Script Parameter",
+        "required": false
+      },
+      {
+        "xmlElement": "Script",
+        "type": "script",
+        "hrLabel": "Script",
+        "required": false
+      },
+      {
         "xmlElement": "Action",
         "type": "enum",
         "hrLabel": "Action",
@@ -933,12 +954,6 @@
           "Read",
           "Cancel"
         ]
-      },
-      {
-        "xmlElement": "Script",
-        "type": "script",
-        "hrLabel": "Script",
-        "required": false
       },
       {
         "xmlElement": "Calculation",
@@ -972,6 +987,48 @@
     "helpUrl": null
   },
   {
+    "name": "Configure Persistent Data",
+    "id": 238,
+    "category": "control",
+    "snippetFile": "control/Configure Persistent Data.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "Name",
+        "type": "text",
+        "hrLabel": null,
+        "required": true,
+        "notes": "Literal text key for the persistent data entry; cannot be empty."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Instance ID",
+        "wrapperElement": "InstanceId",
+        "required": false,
+        "notes": "Optional; multiple entries can share a Name, distinguished by Instance ID."
+      },
+      {
+        "xmlElement": "Option",
+        "type": "boolean",
+        "hrLabel": "Delete Entry",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "flagStyle": true,
+        "notes": "True = delete the entry (omit Value); False = set/update. Mutually exclusive with Value."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Value",
+        "wrapperElement": "Value",
+        "required": false,
+        "notes": "Set mode only. Mutually exclusive with Delete Entry (Option state=True)."
+      }
+    ]
+  },
+  {
     "name": "Configure Prompt Template",
     "id": 226,
     "category": "artificial intelligence",
@@ -998,7 +1055,8 @@
           "Anthropic",
           "Cohere",
           "Custom"
-        ]
+        ],
+        "enumStyle": "text"
       },
       {
         "xmlElement": "RequestType",
@@ -1011,7 +1069,8 @@
           "SQL Query",
           "Find Request",
           "RAG Prompt"
-        ]
+        ],
+        "enumStyle": "text"
       },
       {
         "xmlElement": "Calculation",
@@ -1220,15 +1279,8 @@
           "Save Model",
           "Load Model",
           "Unload Model"
-        ]
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": "Model Name",
-        "wrapperElement": "LLMTrainModelName",
-        "parentElement": "LLMTrain",
-        "required": false
+        ],
+        "enumStyle": "text"
       },
       {
         "xmlElement": "LLMAlgorithm",
@@ -1239,13 +1291,23 @@
         "defaultValue": "Random Forest",
         "enumValues": [
           "Random Forest"
-        ]
+        ],
+        "enumStyle": "text"
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Model Name",
+        "wrapperElement": "LLMTrainModelName",
+        "parentElement": "LLMTrain",
+        "required": false
       },
       {
         "xmlElement": "Field",
         "type": "field",
         "hrLabel": "Save Model To|Load Model From",
-        "required": false
+        "required": false,
+        "omitWhenEmpty": true
       }
     ],
     "hrSignature": "[ Action: option ; Model Name: calc ; Algorithm: option ; Save Model To|Load Model From: field ]",
@@ -1262,15 +1324,6 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "Restore",
-        "type": "boolean",
-        "hrLabel": "Restore",
-        "xmlAttr": "state",
-        "required": false,
-        "defaultValue": "True",
-        "notes": "Flag-style: shown as \"Restore\" when True, omitted when False"
-      },
-      {
         "xmlElement": "Option",
         "type": "boolean",
         "hrLabel": "Find without indexes",
@@ -1280,9 +1333,18 @@
         "notes": "Flag-style: shown as \"Find without indexes\" when True, omitted when False"
       },
       {
+        "xmlElement": "Restore",
+        "type": "boolean",
+        "hrLabel": "Restore",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "True",
+        "notes": "Flag-style: shown as \"Restore\" when True, omitted when False"
+      },
+      {
         "xmlElement": "Query",
         "type": "findRequests",
-        "hrLabel": null,
+        "hrLabel": "Find Requests",
         "required": false,
         "notes": "See agent/catalogs/find-requests.md for Query structure, search operators, and variable rules"
       }
@@ -1301,6 +1363,19 @@
     "selfClosing": false,
     "params": [
       {
+        "xmlElement": "NoInteract",
+        "type": "boolean",
+        "hrLabel": "With dialog",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "invertedHr": true,
+        "enumValues": [
+          "On",
+          "Off"
+        ]
+      },
+      {
         "xmlElement": "Option",
         "type": "boolean",
         "hrLabel": "Open File",
@@ -1318,17 +1393,12 @@
         "defaultValue": "False"
       },
       {
-        "xmlElement": "NoInteract",
+        "xmlElement": "VerifySSLCertificates",
         "type": "boolean",
-        "hrLabel": "With dialog",
+        "hrLabel": "Verify SSL Certificates",
         "xmlAttr": "state",
         "required": false,
-        "defaultValue": "False",
-        "invertedHr": true,
-        "enumValues": [
-          "On",
-          "Off"
-        ]
+        "defaultValue": "False"
       },
       {
         "xmlElement": "DataSourceType",
@@ -1343,15 +1413,43 @@
         "notes": "Implicit in HR based on source paths shown inline. Not a labeled HR parameter."
       },
       {
-        "xmlElement": "VerifySSLCertificates",
-        "type": "boolean",
-        "hrLabel": "Verify SSL Certificates",
-        "xmlAttr": "state",
+        "xmlElement": "Profile",
+        "type": "attrGroup",
+        "hrLabel": "Profile",
         "required": false,
-        "defaultValue": "False"
+        "fields": [
+          { "key": "FieldDelimiter", "kind": "attr", "xmlAttr": "FieldDelimiter", "defaultValue": "\t" },
+          { "key": "IsPredefined", "kind": "attr", "xmlAttr": "IsPredefined", "defaultValue": "-1" },
+          { "key": "FieldNameRow", "kind": "attr", "xmlAttr": "FieldNameRow", "defaultValue": "-1" },
+          { "key": "DataType", "kind": "attr", "xmlAttr": "DataType", "defaultValue": "    " }
+        ],
+        "notes": "Source-format profile; whitespace attr values (tab FieldDelimiter, space-padded DataType) use the comma/whitespace-safe attrGroup value grammar."
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Source file path or URL. Can be a variable."
+      },
+      {
+        "xmlElement": "ImportOptions",
+        "type": "attrGroup",
+        "hrLabel": "Import options",
+        "required": false,
+        "fields": [
+          { "key": "TargetTableName", "kind": "attr", "xmlAttr": "TargetTableName", "defaultValue": "Table" },
+          { "key": "CharacterSet", "kind": "attr", "xmlAttr": "CharacterSet", "defaultValue": "Macintosh" },
+          { "key": "PreserveContainer", "kind": "attr", "xmlAttr": "PreserveContainer", "defaultValue": "False" },
+          { "key": "MatchFieldNames", "kind": "attr", "xmlAttr": "MatchFieldNames", "defaultValue": "False" },
+          { "key": "AutoEnter", "kind": "attr", "xmlAttr": "AutoEnter", "defaultValue": "False" },
+          { "key": "SplitRepetitions", "kind": "attr", "xmlAttr": "SplitRepetitions", "defaultValue": "False" },
+          { "key": "method", "kind": "attr", "xmlAttr": "method", "defaultValue": "Add" }
+        ],
+        "notes": "Destination import settings (faithful passthrough)."
       }
     ],
-    "hrSignature": "Convert File [ Open File ; Skip Indexes ; With dialog: {On|Off} ; {source} ; Verify SSL Certificates ]",
+    "hrSignature": "Convert File [ With dialog: {On|Off} ; Open File ; Skip Indexes ; Verify SSL Certificates ; {source} ; Profile: ... ; Import options: ... ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -1889,7 +1987,7 @@
       {
         "xmlElement": "Query",
         "type": "findRequests",
-        "hrLabel": null,
+        "hrLabel": "Find Requests",
         "required": false,
         "notes": "See agent/catalogs/find-requests.md for Query structure, search operators, and variable rules"
       }
@@ -1943,7 +2041,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Target",
         "required": false,
         "notes": "Dual format: field ref (table/id/name) or variable (<Field>$variable</Field> with <Text/>)."
@@ -1983,10 +2081,76 @@
       },
       {
         "xmlElement": "Profile",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Profile",
         "required": false,
-        "notes": "QueryType 'Query' \u2192 HR 'SQL Text:' with <Query> child. QueryType 'Calculation' \u2192 HR 'Calculated SQL Text:' with <QueryCalc><Calculation> child. ODBC dsn/UserName/password config incomplete \u2014 needs ODBC setup to test fully."
+        "fields": [
+          {
+            "key": "QueryType",
+            "kind": "attr",
+            "xmlAttr": "QueryType",
+            "defaultValue": "Query"
+          },
+          {
+            "key": "flags",
+            "kind": "attr",
+            "xmlAttr": "flags",
+            "defaultValue": "0"
+          },
+          {
+            "key": "password",
+            "kind": "attr",
+            "xmlAttr": "password",
+            "defaultValue": ""
+          },
+          {
+            "key": "UserName",
+            "kind": "attr",
+            "xmlAttr": "UserName",
+            "defaultValue": ""
+          },
+          {
+            "key": "dsn",
+            "kind": "attr",
+            "xmlAttr": "dsn",
+            "defaultValue": ""
+          },
+          {
+            "key": "FieldDelimiter",
+            "kind": "attr",
+            "xmlAttr": "FieldDelimiter",
+            "defaultValue": "\t"
+          },
+          {
+            "key": "IsPredefined",
+            "kind": "attr",
+            "xmlAttr": "IsPredefined",
+            "defaultValue": "-1"
+          },
+          {
+            "key": "FieldNameRow",
+            "kind": "attr",
+            "xmlAttr": "FieldNameRow",
+            "defaultValue": "0"
+          },
+          {
+            "key": "DataType",
+            "kind": "attr",
+            "xmlAttr": "DataType",
+            "defaultValue": "ODBC"
+          },
+          {
+            "key": "SQL Text",
+            "kind": "text",
+            "childElement": "Query"
+          },
+          {
+            "key": "Calculated SQL",
+            "kind": "calc",
+            "childElement": "QueryCalc"
+          }
+        ],
+        "notes": "attrGroup: <Profile> carries ODBC config attrs (DataType/dsn/UserName/password/delimiters) plus a present-driven query child. QueryType 'Query' -> <Query> literal SQL (HR 'SQL Text'); QueryType 'Calculation' -> <QueryCalc><Calculation> (HR 'Calculated SQL'). Literal SQL and tab FieldDelimiter are auto-quoted in the HR token (NeedsGroupQuote) so commas/whitespace survive."
       }
     ],
     "hrSignature": "Execute SQL [ With dialog: {On|Off} ; {SQL Text: {text}|Calculated SQL Text: {calc}} ]",
@@ -2068,17 +2232,16 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "Field",
-        "type": "field",
-        "hrLabel": null,
+        "xmlElement": "CreateDirectories",
+        "type": "boolean",
+        "hrLabel": "Create folders",
+        "xmlAttr": "state",
         "required": false,
-        "notes": "Supports repetition attribute, shown in HR as [rep]."
-      },
-      {
-        "xmlElement": "UniversalPathList",
-        "type": "text",
-        "hrLabel": null,
-        "required": false
+        "defaultValue": "True",
+        "enumValues": [
+          "On",
+          "Off"
+        ]
       },
       {
         "xmlElement": "AutoOpen",
@@ -2097,19 +2260,20 @@
         "defaultValue": "False"
       },
       {
-        "xmlElement": "CreateDirectories",
-        "type": "boolean",
-        "hrLabel": "Create folders",
-        "xmlAttr": "state",
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false
+      },
+      {
+        "xmlElement": "Field",
+        "type": "field",
+        "hrLabel": null,
         "required": false,
-        "defaultValue": "True",
-        "enumValues": [
-          "On",
-          "Off"
-        ]
+        "notes": "Supports repetition attribute, shown in HR as [rep]."
       }
     ],
-    "hrSignature": "Export Field Contents [ {field} ; {path} ; Automatically open ; Create email ; Create folders: {On|Off} ]",
+    "hrSignature": "Export Field Contents [ Create folders: {On|Off} ; Automatically open ; Create email ; {path} ; {field} ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -2148,19 +2312,6 @@
         ]
       },
       {
-        "xmlElement": "UniversalPathList",
-        "type": "text",
-        "hrLabel": null,
-        "required": false
-      },
-      {
-        "xmlElement": "ExportOptions",
-        "type": "complex",
-        "hrLabel": null,
-        "required": false,
-        "notes": "CharacterSet shown in HR by HR label (see shared-enums.md). FormatUsingCurrentLayout is checkbox 'Apply current layout's data formatting to exported data'."
-      },
-      {
         "xmlElement": "Restore",
         "type": "boolean",
         "hrLabel": null,
@@ -2187,24 +2338,50 @@
       },
       {
         "xmlElement": "Profile",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Profile",
         "required": false,
-        "notes": "See shared-enums.md for DataType values and HR labels."
+        "fields": [
+          { "key": "FieldDelimiter", "kind": "attr", "xmlAttr": "FieldDelimiter", "defaultValue": "\t" },
+          { "key": "IsPredefined", "kind": "attr", "xmlAttr": "IsPredefined", "defaultValue": "-1" },
+          { "key": "FieldNameRow", "kind": "attr", "xmlAttr": "FieldNameRow", "defaultValue": "-1" },
+          { "key": "DataType", "kind": "attr", "xmlAttr": "DataType", "defaultValue": "TABS" }
+        ],
+        "notes": "Export format profile. DataType: TABS|COMS|DBF |MRGE|HTML|FMPR|XML |XLSX (see shared-enums.md). FieldDelimiter may be a tab (whitespace-quoted in HR)."
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false
+      },
+      {
+        "xmlElement": "ExportOptions",
+        "type": "attrGroup",
+        "hrLabel": "Export options",
+        "required": false,
+        "fields": [
+          { "key": "FormatUsingCurrentLayout", "kind": "attr", "xmlAttr": "FormatUsingCurrentLayout", "defaultValue": "False" },
+          { "key": "CharacterSet", "kind": "attr", "xmlAttr": "CharacterSet", "defaultValue": "UTF-8" }
+        ],
+        "notes": "FormatUsingCurrentLayout is the 'Apply current layout's data formatting' checkbox. CharacterSet: see shared-enums.md."
       },
       {
         "xmlElement": "ExportEntries",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "fieldList",
+        "hrLabel": "Export fields",
+        "entryElement": "ExportEntry",
         "required": false,
-        "notes": "Dialog-managed. Contains ExportEntry/Field elements defining export field order."
+        "notes": "fieldList (Cluster 1): ordered export field list. Each entry <ExportEntry><Field/></ExportEntry>. HR token `Export fields: Table::Field, ...`."
       },
       {
         "xmlElement": "SummaryFields",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "fieldList",
+        "hrLabel": "Summary fields",
+        "entryAttr": "GroupByFieldIsSelected",
+        "entryAttrDefault": "True",
         "required": false,
-        "notes": "Dialog-managed. Contains Field elements with GroupByFieldIsSelected attribute for group-by fields."
+        "notes": "fieldList (Cluster 1): group-by summary fields. Each entry is a direct <Field GroupByFieldIsSelected=\"True\"/>. HR token `Summary fields: Table::Field=True, ...`."
       }
     ],
     "hrSignature": "Export Records [ With dialog: {On|Off} ; Create folders: {On|Off} ; {path} ; {characterSet} ]",
@@ -2249,7 +2426,7 @@
       {
         "xmlElement": "Query",
         "type": "findRequests",
-        "hrLabel": null,
+        "hrLabel": "Find Requests",
         "required": false,
         "notes": "See agent/catalogs/find-requests.md for Query structure, search operators, and variable rules"
       }
@@ -2326,7 +2503,8 @@
         "enumValues": [
           "Table",
           "File"
-        ]
+        ],
+        "enumStyle": "text"
       },
       {
         "xmlElement": "Table",
@@ -2355,7 +2533,8 @@
         "type": "field",
         "hrLabel": "Response Target",
         "required": false,
-        "notes": "Sibling of FineTuneLLM. Dual format: field ref (table/id/name with repetition) or variable (<Field repetition='n'>$variable</Field> with <Text/>)."
+        "omitWhenEmpty": true,
+        "notes": "Sibling of FineTuneLLM. Dual format: field ref (table/id/name with repetition) or variable (<Field repetition='n'>$variable</Field> with <Text/>). omitWhenEmpty: present-driven so the unconfigured target emits no <Field>."
       },
       {
         "xmlElement": "Calculation",
@@ -2599,7 +2778,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Target",
         "required": false,
         "notes": "Dual format: field ref (table/id/name) or variable (<Field>$variable</Field> with <Text/>). Supports repetition."
@@ -2626,7 +2805,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Target",
         "required": false,
         "notes": "Dual format: field ref (table/id/name) or variable (<Field>$variable</Field> with <Text/>). Supports repetition."
@@ -2653,7 +2832,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Target",
         "required": false,
         "notes": "Dual format: field ref (table/id/name) or variable (<Field>$variable</Field> with <Text/>). Supports repetition."
@@ -2681,38 +2860,38 @@
         "defaultValue": "True"
       },
       {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Repetition",
+        "wrapperElement": "Repetition",
+        "required": true,
+        "notes": "FM always serializes Repetition/DialogTitle/DefaultLocation for this step (even empty). Labeled to avoid positional scramble; required so the empty default round-trips."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Dialog title",
+        "wrapperElement": "DialogTitle",
+        "required": true,
+        "notes": "Custom title for the folder selection dialog."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Default location",
+        "wrapperElement": "DefaultLocation",
+        "required": true,
+        "notes": "Path that dialog displays when opened."
+      },
+      {
         "xmlElement": "Name",
         "type": "text",
         "hrLabel": null,
         "required": false,
-        "notes": "Variable name ($local or $$global). Shown inline in HR."
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": null,
-        "wrapperElement": "DialogTitle",
-        "required": false,
-        "notes": "Custom title for the folder selection dialog. Shown inline in HR."
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": null,
-        "wrapperElement": "DefaultLocation",
-        "required": false,
-        "notes": "Path that dialog displays when opened. Shown inline in HR."
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": null,
-        "wrapperElement": "Repetition",
-        "required": false,
-        "notes": "Variable repetition. Not shown in HR when 1. Shown as [n] suffix on variable name when > 1."
+        "notes": "Variable name ($local or $$global); FM serializes it last. Bare positional token in HR."
       }
     ],
-    "hrSignature": "Get Folder Path [ Allow Folder Creation ; {$variable} ; {dialogTitle} ; {defaultLocation} ]",
+    "hrSignature": "Get Folder Path [ Allow Folder Creation ; Repetition: <n> ; Dialog title: <calc> ; Default location: <calc> ; $variable ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -2774,7 +2953,9 @@
         "xmlElement": "Layout",
         "type": "layout",
         "hrLabel": null,
-        "required": false
+        "required": false,
+        "notes": "Sibling of LayoutDestination — NOT nested inside it. Must use explicit open/close tags: <Layout id=\"N\" name=\"Name\"></Layout>. Self-closing form is silently dropped by FileMaker on paste.",
+        "discriminator": "LayoutDestination"
       },
       {
         "xmlElement": "Animation",
@@ -2788,6 +2969,9 @@
     "monacoSnippet": "Go to Layout [ \"${1:LayoutName}\" ]",
     "blockPair": null,
     "status": "complete",
+    "notes": {
+      "gotchas": "Layout is a sibling of LayoutDestination, both direct children of Step — do NOT nest Layout inside LayoutDestination. Layout must use explicit open/close tags; self-closing form is silently dropped on paste into FileMaker."
+    },
     "helpUrl": "https://help.claris.com/en/pro-help/content/go-to-layout.html"
   },
   {
@@ -2858,7 +3042,7 @@
   },
   {
     "name": "Go to Next Field",
-    "id": 5,
+    "id": 4,
     "category": "navigation",
     "snippetFile": "navigation/Go to Next Field.xml",
     "selfClosing": true,
@@ -2975,7 +3159,7 @@
   },
   {
     "name": "Go to Previous Field",
-    "id": 4,
+    "id": 5,
     "category": "navigation",
     "snippetFile": "navigation/Go to Previous Field.xml",
     "selfClosing": true,
@@ -3075,34 +3259,6 @@
         "notes": "Flag-style: shown as \"Match found set\" when True, omitted when False"
       },
       {
-        "xmlElement": "Table",
-        "type": "tableOccurrence",
-        "hrLabel": "From table",
-        "required": true
-      },
-      {
-        "xmlElement": "LayoutDestination",
-        "type": "enum",
-        "hrLabel": "Using layout",
-        "xmlAttr": "value",
-        "required": false,
-        "defaultValue": "SelectedLayout",
-        "enumValues": [
-          "<Current Layout>",
-          "Layout Name",
-          "Layout Name by Calc",
-          "Layout Number by Calc"
-        ],
-        "notes": "See animation-enums.md for LayoutDestination values"
-      },
-      {
-        "xmlElement": "Layout",
-        "type": "layoutRef",
-        "hrLabel": null,
-        "required": false,
-        "notes": "Layout id/name for SelectedLayout, or Calculation child for LayoutNameByCalc/LayoutNumberByCalc"
-      },
-      {
         "xmlElement": "ShowInNewWindow",
         "type": "boolean",
         "hrLabel": "New window",
@@ -3114,31 +3270,59 @@
       {
         "xmlElement": "Restore",
         "type": "boolean",
-        "hrLabel": null,
+        "hrLabel": "Restore",
         "xmlAttr": "state",
         "required": false,
         "defaultValue": "False",
-        "notes": "Not surfaced in HR. The canonical default is \"False\" — verified via FM round-trip 2026-05-15. Emitting state=\"True\" causes FM to render the step's HR as if \"Show only related records\" were checked, even when <Option state=\"False\"/>. Always emit state=\"False\" unless a specific need to override is documented."
+        "notes": "Canonical default is \"False\" — verified via FM round-trip 2026-05-15: emitting state=\"True\" mis-renders the HR as if \"Show only related records\" were checked. Upstream's param-order fix may address the root cause; reviewer to confirm the True default against live FM. FM serializes <Restore state=...> between ShowInNewWindow and LayoutDestination."
+      },
+      {
+        "xmlElement": "LayoutDestination",
+        "type": "enum",
+        "hrLabel": "Using layout",
+        "xmlAttr": "value",
+        "required": false,
+        "defaultValue": "SelectedLayout",
+        "enumValues": [
+          "SelectedLayout",
+          "CurrentLayout",
+          "LayoutNameByCalc",
+          "LayoutNumberByCalc"
+        ],
+        "notes": "Driven discriminator for the sibling Layout (type:layout); see that param. Silent companion — encoded in the layout token, not rendered separately."
       },
       {
         "xmlElement": "NewWndStyles",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Window style",
         "required": false,
-        "notes": "See window-enums.md for Style/Close/Minimize/Maximize/Resize/DimParentWindow/Toolbars/MenuBar attributes"
+        "fields": [
+          { "key": "Style", "kind": "attr", "xmlAttr": "Style", "defaultValue": "Document" },
+          { "key": "Close", "kind": "attr", "xmlAttr": "Close", "defaultValue": "Yes" },
+          { "key": "Minimize", "kind": "attr", "xmlAttr": "Minimize", "defaultValue": "Yes" },
+          { "key": "Maximize", "kind": "attr", "xmlAttr": "Maximize", "defaultValue": "Yes" },
+          { "key": "Resize", "kind": "attr", "xmlAttr": "Resize", "defaultValue": "Yes" },
+          { "key": "Styles", "kind": "attr", "xmlAttr": "Styles", "defaultValue": "3606018" }
+        ],
+        "notes": "New-window styles, always serialized by FM. See window-enums.md."
       },
       {
-        "xmlElement": "Animation",
-        "type": "enum",
+        "xmlElement": "Table",
+        "type": "tableOccurrence",
+        "hrLabel": "From table",
+        "required": true
+      },
+      {
+        "xmlElement": "Layout",
+        "type": "layout",
         "hrLabel": null,
-        "xmlAttr": "value",
         "required": false,
-        "defaultValue": "None",
-        "omitWhenDefault": true,
-        "notes": "FileMaker Go only. See animation-enums.md for values. Omit the <Animation> element entirely when the value would be \"None\" — emitting <Animation value=\"None\"/> produces a stray \"External\" prefix in HR (verified via FM round-trip 2026-05-15)."
+        "discriminator": "LayoutDestination",
+        "notes": "Presence + shape governed by the sibling LayoutDestination (discriminator): none for Current, <Layout id name/> for Selected, <Layout><Calculation/></Layout> for the by-calc forms. One self-describing HR token."
       }
     ],
-    "hrSignature": "[ Show only related records ; Match found set ; From table: \"table\" ; Using layout: layout ; New window ]",
+    "hrSignature": "[ Show only related records ; Match found set ; New window ; Restore: <On/Off> ; Using layout: layout ; Window style: ... ; From table: \"table\" ]",
+    "notesAnimation": "FileMaker Go's <Animation> is NOT modeled: desktop FM drops <Animation value=\"None\"/> on paste, so emitting it diverges from the FM baseline and its bare 'None' token mis-binds positionally to Layout.",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -3234,54 +3418,6 @@
         ]
       },
       {
-        "xmlElement": "Table",
-        "type": "tableRef",
-        "hrLabel": "Table",
-        "required": false
-      },
-      {
-        "xmlElement": "UniversalPathList",
-        "type": "text",
-        "hrLabel": null,
-        "required": false,
-        "notes": "File path, folder path, or URL. Can be a variable."
-      },
-      {
-        "xmlElement": "DataSourceType",
-        "type": "enum",
-        "hrLabel": null,
-        "xmlAttr": "value",
-        "required": false,
-        "defaultValue": "File",
-        "enumValues": [
-          "File",
-          "Folder",
-          "XMLSource"
-        ],
-        "notes": "Determines Profile structure. See shared-enums.md for details."
-      },
-      {
-        "xmlElement": "Profile",
-        "type": "complex",
-        "hrLabel": null,
-        "required": false,
-        "notes": "Structure varies by DataSourceType. See shared-enums.md for DataType codes, Folder attributes, and XMLSource variants."
-      },
-      {
-        "xmlElement": "ImportOptions",
-        "type": "complex",
-        "hrLabel": null,
-        "required": false,
-        "notes": "Contains method (Add/UpdateOnMatch/Update), CharacterSet, and other import settings. HR \"Update\" = XML \"UpdateOnMatch\", HR \"Replace\" = XML \"Update\"."
-      },
-      {
-        "xmlElement": "TargetFields",
-        "type": "complex",
-        "hrLabel": null,
-        "required": false,
-        "notes": "Field mapping: map=\"Import\"/\"DoNotImport\"/\"Match\". Match only with UpdateOnMatch."
-      },
-      {
         "xmlElement": "Restore",
         "type": "boolean",
         "hrLabel": null,
@@ -3298,6 +3434,60 @@
         "required": false,
         "defaultValue": "False",
         "notes": "Flag-style: shown as \"Verify SSL Certificates\" when True, omitted when False"
+      },
+      {
+        "xmlElement": "DataSourceType",
+        "type": "enum",
+        "hrLabel": null,
+        "xmlAttr": "value",
+        "required": false,
+        "defaultValue": "File",
+        "enumValues": [
+          "File",
+          "Folder",
+          "XMLSource"
+        ],
+        "notes": "Determines Profile structure. See shared-enums.md for details."
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "File path, folder path, or URL. Can be a variable."
+      },
+      {
+        "xmlElement": "ImportOptions",
+        "type": "attrGroup",
+        "hrLabel": "Import options",
+        "required": false,
+        "fields": [
+          { "key": "CharacterSet", "kind": "attr", "xmlAttr": "CharacterSet", "defaultValue": "UTF-8" },
+          { "key": "PreserveContainer", "kind": "attr", "xmlAttr": "PreserveContainer", "defaultValue": "False" },
+          { "key": "MatchFieldNames", "kind": "attr", "xmlAttr": "MatchFieldNames", "defaultValue": "False" },
+          { "key": "AutoEnter", "kind": "attr", "xmlAttr": "AutoEnter", "defaultValue": "True" },
+          { "key": "SplitRepetitions", "kind": "attr", "xmlAttr": "SplitRepetitions", "defaultValue": "False" },
+          { "key": "method", "kind": "attr", "xmlAttr": "method", "defaultValue": "Add" }
+        ],
+        "notes": "Import settings. method: Add | UpdateOnMatch (HR 'Update') | Update (HR 'Replace'). Faithful passthrough of the raw method token."
+      },
+      {
+        "xmlElement": "Table",
+        "type": "tableRef",
+        "hrLabel": "Table",
+        "required": false
+      },
+      {
+        "xmlElement": "TargetFields",
+        "type": "fieldList",
+        "hrLabel": "Import fields",
+        "entryAttr": "map",
+        "entryAttrDefault": "Import",
+        "fieldFixedAttrs": [
+          { "key": "FieldOptions", "kind": "attr", "xmlAttr": "FieldOptions", "defaultValue": "0" }
+        ],
+        "required": false,
+        "notes": "fieldList (Cluster 1): ordered target field mapping. Each entry is a direct <Field FieldOptions=\"0\" map=\"Import|DoNotImport|Match\"/>. HR token `Import fields: Table::Field=Import, ...`. map=Match only with method=UpdateOnMatch."
       }
     ],
     "hrSignature": "[ With dialog: On|Off ; Table: table ; path ; Add|Update|Replace ; charset ; Verify SSL Certificates ]",
@@ -3343,13 +3533,14 @@
         "type": "enum",
         "hrLabel": "Reference",
         "xmlAttr": "type",
+        "flagStyle": true,
         "required": false,
         "defaultValue": "Embedded",
         "enumValues": [
           "Embedded",
           "Reference"
         ],
-        "notes": "Flag-style: \"Reference\" shown when type=\"Reference\", omitted when \"Embedded\""
+        "notes": "G11 attribute-on-element. Flag-style: \"Reference\" shown when type=\"Reference\", omitted when \"Embedded\""
       }
     ],
     "hrSignature": "[ Reference ; path ]",
@@ -3375,21 +3566,21 @@
         "notes": "Flag-style: shown as \"Select\" when True, omitted when False"
       },
       {
-        "xmlElement": "Field",
-        "type": "fieldOrVariable",
-        "hrLabel": "Target",
-        "required": false,
-        "notes": "Dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field, or <Text/><Field></Field> for variable. Supports repetition attribute. When omitted, uses active field."
-      },
-      {
         "xmlElement": "Calculation",
         "type": "calc",
         "hrLabel": null,
         "required": false,
         "notes": "The calculated result to insert"
+      },
+      {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Target",
+        "required": false,
+        "notes": "Dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field, or <Text/><Field></Field> for variable. Supports repetition attribute. When omitted, uses active field. Emitted after Calculation to match FM element order."
       }
     ],
-    "hrSignature": "[ Select ; Target: Table::Field| ; calc ]",
+    "hrSignature": "[ Select ; calc ; Target: Table::Field| ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -3493,6 +3684,14 @@
     "selfClosing": false,
     "params": [
       {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Target",
+        "required": false,
+        "notes": "Dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field, or <Text/><Field></Field> for variable. Supports repetition attribute. When omitted, uses active field.",
+        "emitEmptyDefault": true
+      },
+      {
         "xmlElement": "Calculation",
         "type": "namedCalc",
         "hrLabel": "Account Name",
@@ -3515,13 +3714,6 @@
         "wrapperElement": "InputText",
         "parentElement": "LLMEmbedding",
         "required": true
-      },
-      {
-        "xmlElement": "Field",
-        "type": "fieldOrVariable",
-        "hrLabel": "Target",
-        "required": false,
-        "notes": "Dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field, or <Text/><Field></Field> for variable. Supports repetition attribute. When omitted, uses active field."
       }
     ],
     "hrSignature": "[ Account Name: calc ; Embedding Model: calc ; Input: calc ; Target: Table::Field| ]",
@@ -3537,6 +3729,13 @@
     "snippetFile": "artificial intelligence/Insert Embedding in Found Set.xml",
     "selfClosing": false,
     "params": [
+      {
+        "xmlElement": "Field",
+        "type": "field",
+        "hrLabel": "Target Field",
+        "required": false,
+        "notes": "Target field as sibling outside LLMBulkEmbedding. When omitted, uses active field."
+      },
       {
         "xmlElement": "Calculation",
         "type": "namedCalc",
@@ -3560,13 +3759,6 @@
         "parentElement": "LLMBulkEmbedding",
         "required": false,
         "notes": "Source field inside LLMBulkEmbedding"
-      },
-      {
-        "xmlElement": "Field",
-        "type": "field",
-        "hrLabel": "Target Field",
-        "required": false,
-        "notes": "Target field as sibling outside LLMBulkEmbedding. When omitted, uses active field."
       },
       {
         "xmlElement": "Overwrite",
@@ -3615,71 +3807,54 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "Storage",
-        "type": "enum",
-        "hrLabel": null,
-        "xmlAttr": "type",
-        "parentElement": "DialogOptions",
-        "required": false,
-        "defaultValue": "UserChoice",
-        "enumValues": [
-          "Insert",
-          "Reference"
-        ],
-        "notes": "HR flag-style: \"Insert\" or \"Reference\" shown when set, omitted for \"UserChoice\". XML values: \"InsertOnly\", \"ReferenceOnly\", \"InsertAndReference\", \"UserChoice\"."
-      },
-      {
-        "xmlElement": "DialogOptions/@asFile",
-        "type": "boolean",
-        "hrLabel": "Display content",
-        "xmlAttr": "asFile",
-        "required": false,
-        "defaultValue": "True",
-        "notes": "Inverted: HR \"Display content\" = asFile=\"False\". Omitted when asFile=\"True\" (file icon display)."
-      },
-      {
-        "xmlElement": "Compress",
-        "type": "enum",
-        "hrLabel": null,
-        "xmlAttr": "type",
-        "parentElement": "DialogOptions",
-        "required": false,
-        "defaultValue": "UserChoice",
-        "enumValues": [
-          "Compress when possible",
-          "Never compress"
-        ],
-        "notes": "XML values: \"WhenPossible\", \"Never\", \"UserChoice\"."
-      },
-      {
-        "xmlElement": "Field",
-        "type": "fieldOrVariable",
-        "hrLabel": "Target",
-        "required": false,
-        "notes": "Dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field, or <Text/><Field></Field> for variable. When omitted, uses active container field."
-      },
-      {
         "xmlElement": "UniversalPathList",
         "type": "text",
         "hrLabel": null,
         "required": false,
-        "notes": "Source file path. If omitted, user is prompted."
+        "notes": "Source file path (direct text content of UniversalPathList). If omitted, user is prompted. Carries the type attribute via the UniversalPathList/@type param (G11)."
       },
       {
         "xmlElement": "UniversalPathList/@type",
         "type": "enum",
-        "hrLabel": null,
+        "hrLabel": "Reference",
         "xmlAttr": "type",
+        "flagStyle": true,
         "required": false,
         "defaultValue": "Embedded",
         "enumValues": [
           "Embedded",
           "Reference"
         ],
-        "notes": "Internal attribute reflecting Storage choice."
+        "notes": "G11 attribute-on-element. Flag-style: HR shows \"Reference\" only when stored as a reference; Embedded (default) is hidden. Reflects the embed-vs-reference storage choice."
+      },
+      {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Target",
+        "required": false,
+        "notes": "Dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field, or <Text/><Field>$var</Field> for variable. When omitted, uses active container field."
+      },
+      {
+        "xmlElement": "DialogOptions",
+        "type": "attrGroup",
+        "hrLabel": "Dialog",
+        "required": false,
+        "note": "Custom Insert File dialog subtree. asFile/enable attrs on the element; Title calc; Storage/Compress child elements (each a single type attr); FilterList (allowed file types).",
+        "fields": [
+          { "key": "asFile", "kind": "attr", "xmlAttr": "asFile", "defaultValue": "True" },
+          { "key": "enable", "kind": "attr", "xmlAttr": "enable", "defaultValue": "True" },
+          { "key": "Title", "kind": "calc", "childElement": "Title" },
+          { "key": "Storage", "kind": "group", "element": "Storage", "fields": [
+            { "key": "type", "kind": "attr", "xmlAttr": "type", "defaultValue": "UserChoice" }
+          ] },
+          { "key": "Compress", "kind": "group", "element": "Compress", "fields": [
+            { "key": "type", "kind": "attr", "xmlAttr": "type", "defaultValue": "UserChoice" }
+          ] },
+          { "key": "FilterList", "kind": "group", "element": "FilterList", "fields": [] }
+        ]
       }
     ],
-    "hrSignature": "[ Insert|Reference ; Display content ; Compress when possible|Never compress ; Target: Table::Field| ; path ]",
+    "hrSignature": "Insert File [ <path> ; <Reference ;> Target: Table::Field|$var ; Dialog: asFile=<True|False>, enable=<True|False>, Title=<calc>, Storage=( type=<token> ), Compress=( type=<token> ), FilterList=() ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -3692,13 +3867,6 @@
     "snippetFile": "fields/Insert from Device.xml",
     "selfClosing": false,
     "params": [
-      {
-        "xmlElement": "Field",
-        "type": "field",
-        "hrLabel": null,
-        "required": true,
-        "notes": "Target container field (or text field for barcodes)"
-      },
       {
         "xmlElement": "InsertFrom",
         "type": "enum",
@@ -3717,123 +3885,52 @@
         ]
       },
       {
-        "xmlElement": "Camera",
-        "type": "enum",
-        "hrLabel": "Camera",
-        "xmlAttr": "choice",
-        "parentElement": "DeviceOptions",
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Target",
         "required": false,
-        "defaultValue": "Back",
-        "enumValues": [
-          "Back",
-          "Front"
-        ],
-        "notes": "Applies to Camera, Video Camera, and Barcode (with ScanFrom type=\"Camera\")"
+        "notes": "Target container field (or text field for barcodes). Optional — when omitted, FM uses the active container field and emits no <Field>."
       },
       {
-        "xmlElement": "Resolution",
-        "type": "enum",
-        "hrLabel": "Resolution",
-        "xmlAttr": "choice",
-        "parentElement": "DeviceOptions",
+        "xmlElement": "DeviceOptions",
+        "type": "attrGroup",
+        "hrLabel": "Device",
         "required": false,
-        "defaultValue": "Full",
-        "enumValues": [
-          "Full",
-          "Large",
-          "Medium",
-          "Small"
-        ],
-        "notes": "Applies to Camera, Video Camera, and Barcode (with ScanFrom type=\"Camera\")"
-      },
-      {
-        "xmlElement": "MaxDuration",
-        "type": "boolean",
-        "hrLabel": "Max duration",
-        "xmlAttr": "state",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "defaultValue": "False",
-        "notes": "When True, contains Calculation child (seconds). Applies to Video Camera and Microphone."
-      },
-      {
-        "xmlElement": "StartImmediately",
-        "type": "boolean",
-        "hrLabel": "Start immediately",
-        "xmlAttr": "state",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "defaultValue": "False",
-        "notes": "Flag-style in HR. Applies to Video Camera and Microphone."
-      },
-      {
-        "xmlElement": "ScanFrom",
-        "type": "enum",
-        "hrLabel": "Scan from",
-        "xmlAttr": "type",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "defaultValue": "Camera",
-        "enumValues": [
-          "Camera",
-          "Field"
-        ],
-        "notes": "Barcode only. When type=\"Field\", contains Field child element."
-      },
-      {
-        "xmlElement": "Barcodes",
-        "type": "bitmask",
-        "hrLabel": null,
-        "xmlAttr": "types",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "defaultValue": "4194303",
-        "notes": "Bitmask for 22 barcode types. 4194303 (0x3FFFFF) = all enabled. Barcode only."
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": "Title",
-        "wrapperElement": "Title",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "notes": "Signature only"
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": "Message",
-        "wrapperElement": "Message",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "notes": "Signature only"
-      },
-      {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": "Prompt",
-        "wrapperElement": "Prompt",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "notes": "Signature only"
-      },
-      {
-        "xmlElement": "Presentation",
-        "type": "enum",
-        "hrLabel": "Presentation",
-        "xmlAttr": "choice",
-        "parentElement": "DeviceOptions",
-        "required": false,
-        "defaultValue": "Full Screen",
-        "enumValues": [
-          "Full Screen",
-          "Overlay",
-          "Embedded"
-        ],
-        "notes": "Signature only. Falls back to Overlay if container too small."
+        "note": "Present-driven subtree whose children vary by InsertFrom type — Camera/Video: Camera/Resolution/LightMode (+ MaxDuration/StartImmediately for Video); Microphone: MaxDuration/StartImmediately; Barcode: ScanFrom (Camera->Camera/Resolution/LightMode, Field-><Field> ref) + Barcodes; Signature: Title/Message/Prompt/Presentation; Photo/Music Library: none. Fields declared in FM's union child-order; each round-trips by presence, so no discriminator logic is needed.",
+        "fields": [
+          { "key": "ScanFrom", "kind": "group", "element": "ScanFrom", "fields": [
+            { "key": "type", "kind": "attr", "xmlAttr": "type", "defaultValue": "Camera" },
+            { "key": "source", "kind": "field" }
+          ] },
+          { "key": "Camera", "kind": "group", "element": "Camera", "fields": [
+            { "key": "choice", "kind": "attr", "xmlAttr": "choice", "defaultValue": "Back" }
+          ] },
+          { "key": "Resolution", "kind": "group", "element": "Resolution", "fields": [
+            { "key": "choice", "kind": "attr", "xmlAttr": "choice", "defaultValue": "Full" }
+          ] },
+          { "key": "LightMode", "kind": "group", "element": "LightMode", "fields": [
+            { "key": "choice", "kind": "attr", "xmlAttr": "choice", "defaultValue": "Auto" }
+          ] },
+          { "key": "MaxDuration", "kind": "group", "element": "MaxDuration", "fields": [
+            { "key": "state", "kind": "attr", "xmlAttr": "state", "defaultValue": "False" },
+            { "key": "duration", "kind": "calc", "childElement": "" }
+          ] },
+          { "key": "StartImmediately", "kind": "group", "element": "StartImmediately", "fields": [
+            { "key": "state", "kind": "attr", "xmlAttr": "state", "defaultValue": "False" }
+          ] },
+          { "key": "Barcodes", "kind": "group", "element": "Barcodes", "fields": [
+            { "key": "types", "kind": "attr", "xmlAttr": "types", "defaultValue": "4194303" }
+          ] },
+          { "key": "Title", "kind": "calc", "childElement": "Title" },
+          { "key": "Message", "kind": "calc", "childElement": "Message" },
+          { "key": "Prompt", "kind": "calc", "childElement": "Prompt" },
+          { "key": "Presentation", "kind": "group", "element": "Presentation", "fields": [
+            { "key": "choice", "kind": "attr", "xmlAttr": "choice", "defaultValue": "Full Screen" }
+          ] }
+        ]
       }
     ],
-    "hrSignature": "[ Table::Field ; Type: Camera|Video Camera|Microphone|Photo Library|Music Library|Barcode|Signature ; Camera: Back|Front ; Resolution: Full|Large|Medium|Small ; Max duration: calc ; Start immediately ; Scan from: Field ; Title: calc ; Message: calc ; Prompt: calc ; Presentation: Full Screen|Overlay|Embedded ]",
+    "hrSignature": "Insert from Device [ Type: <Camera|Video Camera|Microphone|Photo Library|Music Library|Barcode|Signature> ; Target: Table::Field|$var ; Device: ( per-type children, e.g. Camera=(choice=Back), Resolution=(choice=Full), LightMode=(choice=Auto), MaxDuration=(state=True, duration=<calc>), StartImmediately=(state=True), ScanFrom=(type=Field, source=Table::Field), Barcodes=(types=4194303), Title=<calc>, Message=<calc>, Prompt=<calc>, Presentation=(choice=Full Screen) ) ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -3982,27 +4079,25 @@
     "selfClosing": false,
     "params": [
       {
-        "hrLabel": "type",
-        "type": "enum",
         "xmlElement": "UniversalPathList",
-        "xmlAttr": "type",
-        "enumValues": [
-          {
-            "hr": "",
-            "xml": "Embedded"
-          },
-          {
-            "hr": "Reference",
-            "xml": "Reference"
-          }
-        ],
-        "notes": "HR shows no label for Embedded (default). HR shows \"Reference\" as a prefix before the path when Reference."
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Source file path (direct text content of UniversalPathList). File path must begin with \"image\", \"imagemac\", \"imagewin\", or \"imagelinux\". Optional; if omitted, user is prompted."
       },
       {
-        "hrLabel": "path",
-        "type": "calculation",
-        "xmlElement": "UniversalPathList",
-        "notes": "Text content of UniversalPathList. File path must begin with \"image\", \"imagemac\", \"imagewin\", or \"imagelinux\". Optional; if omitted, user is prompted."
+        "xmlElement": "UniversalPathList/@type",
+        "type": "enum",
+        "hrLabel": "Reference",
+        "xmlAttr": "type",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "Embedded",
+        "enumValues": [
+          "Embedded",
+          "Reference"
+        ],
+        "notes": "G11 attribute-on-element. Flag-style: HR shows \"Reference\" only when stored as a reference; Embedded (embed the file, default) is hidden."
       }
     ],
     "hrSignature": "Insert PDF [ <Reference ;> \"$path\" ]",
@@ -4019,27 +4114,25 @@
     "selfClosing": false,
     "params": [
       {
-        "hrLabel": "type",
-        "type": "enum",
         "xmlElement": "UniversalPathList",
-        "xmlAttr": "type",
-        "enumValues": [
-          {
-            "hr": "",
-            "xml": "Embedded"
-          },
-          {
-            "hr": "Reference",
-            "xml": "Reference"
-          }
-        ],
-        "notes": "HR shows no label for Embedded (default). HR shows \"Reference\" as a prefix before the path when Reference."
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Source file path (direct text content of UniversalPathList). File path must begin with \"image\", \"imagemac\", \"imagewin\", or \"imagelinux\". Optional; if omitted, user is prompted."
       },
       {
-        "hrLabel": "path",
-        "type": "calculation",
-        "xmlElement": "UniversalPathList",
-        "notes": "Text content of UniversalPathList. File path must begin with \"image\", \"imagemac\", \"imagewin\", or \"imagelinux\". Optional; if omitted, user is prompted."
+        "xmlElement": "UniversalPathList/@type",
+        "type": "enum",
+        "hrLabel": "Reference",
+        "xmlAttr": "type",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "Embedded",
+        "enumValues": [
+          "Embedded",
+          "Reference"
+        ],
+        "notes": "G11 attribute-on-element. Flag-style: HR shows \"Reference\" only when stored as a reference; Embedded (embed the file, default) is hidden."
       }
     ],
     "hrSignature": "Insert Picture [ <Reference ;> \"$path\" ]",
@@ -4090,12 +4183,6 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "CustomMenuSet",
-        "type": "menuSet",
-        "hrLabel": null,
-        "required": true
-      },
-      {
         "xmlElement": "UseAsFileDefault",
         "type": "boolean",
         "hrLabel": "Use as file default",
@@ -4106,6 +4193,13 @@
           "On",
           "Off"
         ]
+      },
+      {
+        "xmlElement": "CustomMenuSet",
+        "type": "reference",
+        "hrLabel": null,
+        "required": true,
+        "note": "Generic name-only reference (FM re-resolves id by name on paste). Built-in: name=\"[Standard FileMaker Menus]\"; reset: name=\"[File Default]\"."
       }
     ],
     "hrSignature": "[ \"<menu set>\" ; Use as file default: On/Off ]",
@@ -4175,7 +4269,10 @@
         "xmlAttr": "state",
         "required": false,
         "defaultValue": "False",
-        "enumValues": ["On", "Off"]
+        "enumValues": [
+          "On",
+          "Off"
+        ]
       },
       {
         "xmlElement": "FlushType",
@@ -4184,7 +4281,11 @@
         "xmlAttr": "value",
         "required": false,
         "defaultValue": "Always",
-        "enumValues": ["Always", "Minimum", "Defer"]
+        "enumValues": [
+          "Always",
+          "Minimum",
+          "Defer"
+        ]
       }
     ],
     "hrSignature": "Loop [ Collapsed: {Off|On} ; Flush: {Always|Minimum|Defer} ]",
@@ -4441,7 +4542,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Target",
         "required": false
       }
@@ -4705,15 +4806,6 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "SkipAutoEntry",
-        "type": "boolean",
-        "hrLabel": "Skip auto-enter options",
-        "xmlAttr": "state",
-        "flagStyle": true,
-        "required": false,
-        "defaultValue": "False"
-      },
-      {
         "xmlElement": "Option",
         "type": "boolean",
         "hrLabel": "Skip data entry validation",
@@ -4726,6 +4818,15 @@
         "xmlElement": "ESSForceCommit",
         "type": "boolean",
         "hrLabel": "Override ESS locking conflicts",
+        "xmlAttr": "state",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "False"
+      },
+      {
+        "xmlElement": "SkipAutoEntry",
+        "type": "boolean",
+        "hrLabel": "Skip auto-enter options",
         "xmlAttr": "state",
         "flagStyle": true,
         "required": false,
@@ -4945,7 +5046,7 @@
       {
         "xmlElement": "Query",
         "type": "findRequests",
-        "hrLabel": null,
+        "hrLabel": "Find Requests",
         "required": false
       }
     ],
@@ -5029,7 +5130,8 @@
           "Query": "Found Set",
           "Data API": "Found Set as JSON",
           "None": "Find Request as JSON"
-        }
+        },
+        "enumStyle": "text"
       },
       {
         "xmlElement": "PromptTemplateName",
@@ -5037,7 +5139,7 @@
         "hrLabel": "Prompt Template Name",
         "parentElement": "LLMCreateFind",
         "required": false,
-        "note": "XML element name unconfirmed \u2014 likely <PromptTemplateName><Calculation/></PromptTemplateName> inside LLMCreateFind"
+        "note": "XML element name unconfirmed — likely <PromptTemplateName><Calculation/></PromptTemplateName> inside LLMCreateFind"
       }
     ],
     "hrSignature": "[ Account Name: <name> ; Model: <model> ; Prompt: <prompt> ; Get: <Found Set | Found Set as JSON | Find Request as JSON> ; Parameters: <params> ; Response Target: <field or variable> ; Prompt Template Name: <name> ]",
@@ -5068,38 +5170,18 @@
       },
       {
         "xmlElement": "FindReplaceOperation",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Operation",
         "required": true,
-        "xmlAttrs": {
-          "type": [
-            "FindNext",
-            "ReplaceAndFind",
-            "Replace",
-            "ReplaceAll"
-          ],
-          "direction": [
-            "Forward",
-            "Backward",
-            "All"
-          ],
-          "MatchWholeWords": [
-            "True",
-            "False"
-          ],
-          "MatchCase": [
-            "True",
-            "False"
-          ],
-          "WithinOptions": [
-            "All",
-            "Current"
-          ],
-          "AcrossOptions": [
-            "All",
-            "Current"
-          ]
-        }
+        "fields": [
+          { "key": "type", "kind": "attr", "xmlAttr": "type", "defaultValue": "FindNext" },
+          { "key": "direction", "kind": "attr", "xmlAttr": "direction", "defaultValue": "Forward" },
+          { "key": "MatchWholeWords", "kind": "attr", "xmlAttr": "MatchWholeWords", "defaultValue": "True" },
+          { "key": "MatchCase", "kind": "attr", "xmlAttr": "MatchCase", "defaultValue": "True" },
+          { "key": "WithinOptions", "kind": "attr", "xmlAttr": "WithinOptions", "defaultValue": "All" },
+          { "key": "AcrossOptions", "kind": "attr", "xmlAttr": "AcrossOptions", "defaultValue": "All" }
+        ],
+        "note": "Self-closing attribute-bearing element (attrGroup, childless → self-close). type/direction/Match* options."
       },
       {
         "xmlElement": "Calculation",
@@ -5145,7 +5227,7 @@
       },
       {
         "xmlElement": "Parameters",
-        "type": "complex",
+        "type": "parametersList",
         "hrLabel": "Parameters",
         "required": false,
         "note": "Contains Count attribute and one <P><Calculation/></P> child per parameter; Count must match number of <P> elements"
@@ -5202,7 +5284,7 @@
         "type": "field",
         "hrLabel": "Response Target",
         "required": false,
-        "note": "Outside RAGSpace; only present for Send Prompt action"
+        "note": "Outside RAGSpace. FM ALWAYS serializes this empty <Field> target (do NOT omitWhenEmpty — unlike SQL/CRM where FM drops it). The PromptMessage/InputText labels keep the prompt token from positional-stealing into this bare field."
       },
       {
         "xmlElement": "RAGAccountName",
@@ -5233,7 +5315,8 @@
           "Add": "Add Data",
           "Prompt": "Send Prompt",
           "Remove": "Remove Data"
-        }
+        },
+        "enumStyle": "text"
       },
       {
         "xmlElement": "DataSource",
@@ -5247,23 +5330,25 @@
         "hrEnumValues": {
           "FromText": "From Text"
         },
-        "note": "Add Data action only"
+        "note": "Add Data action only. omitWhenEmpty: present-driven so the Prompt action (no DataSource) emits no empty <DataSource>.",
+        "omitWhenEmpty": true,
+        "enumStyle": "text"
       },
       {
         "xmlElement": "InputText",
         "type": "namedCalc",
-        "hrLabel": null,
+        "hrLabel": "Input Text",
         "parentElement": "RAGSpace",
         "required": false,
-        "note": "Add Data action only; bare value in HR"
+        "note": "Add Data action only. Labeled (not bare) so it does not positional-collide with the sibling Response Target field."
       },
       {
         "xmlElement": "PromptMessage",
         "type": "namedCalc",
-        "hrLabel": null,
+        "hrLabel": "Prompt",
         "parentElement": "RAGSpace",
         "required": false,
-        "note": "Send Prompt action only; bare value in HR"
+        "note": "Send Prompt action only. Labeled (not bare) so it does not positional-collide with the sibling Response Target field."
       },
       {
         "xmlElement": "AIAccountName",
@@ -5321,7 +5406,9 @@
         "xmlElement": "Script",
         "type": "script",
         "hrLabel": null,
-        "required": false
+        "required": false,
+        "omitWhenEmpty": true,
+        "note": "Present-driven: the unspecified target (<Script id=\"0\" name=\"\"/>) is omitted to match FM, which drops the empty <Script> on paste."
       }
     ],
     "hrSignature": "[ \"ScriptName\" ; Parameter: value ]",
@@ -5409,25 +5496,30 @@
         "xmlElement": "Calculation",
         "type": "calculation",
         "hrLabel": "Parameter",
+        "omitWhenEmpty": true,
         "required": false,
-        "note": "Parameter for the main server script. Always optional."
+        "note": "Parameter for the main server script. Always optional. omitWhenEmpty surfaces the 'Parameter:' label on read so the value is claimed by label (not positionally — otherwise the optional Calculated By-name discriminator steals it)."
       },
       {
         "xmlElement": "Script",
         "type": "script",
         "hrLabel": null,
         "required": false,
-        "note": "Present when Specified: From list. Omit when using Specified: By name."
+        "note": "Present when Specified: From list. Omit when using Specified: By name. FM drops an empty <Script id=0 name=/> on paste."
       },
       {
         "xmlElement": "CallbackScript",
-        "type": "complex",
-        "hrLabel": "Callback script specified",
+        "type": "attrGroup",
+        "hrLabel": "Callback script",
         "required": false,
-        "note": "Contains ScriptName (id/name ref) and optional ScriptParameter (Calculation wrapper). If omitted, behaves like Perform Script on Server."
+        "note": "The callback's <ScriptName> (script-ref child) + optional <ScriptParameter><Calculation>. attrGroup omits the whole element when the HR token is absent (behaves like Perform Script on Server). FM drops an empty <ScriptName> on paste, so the script kind is present-driven.",
+        "fields": [
+          { "key": "Script", "kind": "script", "element": "ScriptName" },
+          { "key": "Parameter", "kind": "calc", "childElement": "ScriptParameter" }
+        ]
       }
     ],
-    "hrSignature": "[ Specified: <From list | By name> ; <script> ; Parameter: <param> ; Callback script specified: From list ; <callback script> ; Parameter: <param> ; State: <Continue | Halt | Exit | Resume | Pause> ]",
+    "hrSignature": "[ Specified: <From list | By name> ; <script> ; Parameter: <param> ; State: <Continue | Halt | Exit | Resume | Pause> ; Callback script: Script=<callback script>, Parameter=<param> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -5558,12 +5650,13 @@
         "required": false
       },
       {
-        "xmlElement": "SaveResult",
-        "type": "complex",
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
         "hrLabel": "Save result",
-        "parentElement": "LLMSemanticFind",
+        "parentElement": "LLMSemanticFind/SaveResult",
+        "emitEmptyDefault": true,
         "required": false,
-        "note": "Contains a Field element \u2014 dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field refs, or <Field></Field> for variables. Variable form requires <Text/> at step level before the outer Field (Target field)."
+        "note": "The <Field> inside <SaveResult> (nested in LLMSemanticFind) — dual-format: <Field table=\"\" id=\"0\" name=\"\"/> for field refs, or <Field>$var</Field> for variables. emitEmptyDefault keeps FM's empty placeholder so the unconfigured SaveResult round-trips. Variable form also emits a <Text/> at step level before the outer Target field (FM's variable-target marker)."
       }
     ],
     "hrSignature": "[ Query by: <Natural language | Vector data | Image> ; Account Name: <name> ; Embedding Model: <model> ; Text: <text> ; Record set: <All records | Current found set> ; Target field: <field> ; Return count: <n> ; Cosine similarity condition: <condition> ; Cosine similarity value: <value> ; Save result: <field or variable> ]",
@@ -5606,14 +5699,15 @@
           "Embedded": "From list",
           "Reference": "By JSON data"
         },
-        "note": "Mirrors OptionsSelectionType \u2014 not a separate HR param"
+        "note": "Mirrors OptionsSelectionType — not a separate HR param"
       },
       {
         "xmlElement": "Field",
         "type": "field",
         "hrLabel": "Response Target",
         "required": false,
-        "notes": "Sibling before <PerformSQLQuerybyNaturalLanguage>. Dual format: field ref or variable with <Text/>."
+        "omitWhenEmpty": true,
+        "notes": "Sibling before <PerformSQLQuerybyNaturalLanguage>. Dual format: field ref or variable with <Text/>. omitWhenEmpty: present-driven so the unconfigured target emits no <Field>."
       },
       {
         "xmlElement": "Calculation",
@@ -5648,7 +5742,8 @@
         "hrEnumValues": {
           "By List": "From list",
           "By JSON data": "By JSON data"
-        }
+        },
+        "enumStyle": "text"
       },
       {
         "xmlElement": "Action",
@@ -5663,7 +5758,8 @@
           "Get SQL",
           "Get First SQL Only",
           "Get DDL"
-        ]
+        ],
+        "enumStyle": "text"
       },
       {
         "xmlElement": "TablesSelectionType",
@@ -5674,7 +5770,8 @@
         "note": "Only when OptionsSelectionType is By List",
         "hrEnumValues": {
           "By List": "From list"
-        }
+        },
+        "enumStyle": "text"
       },
       {
         "xmlElement": "TableAliases",
@@ -5757,10 +5854,18 @@
       },
       {
         "xmlElement": "PrintSettings",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Print settings",
         "required": false,
-        "note": "Stored print configuration. PlatformData CDATA contains platform-specific binary data generated by FileMaker \u2014 cannot be authored by hand."
+        "fields": [
+          { "key": "PrintType", "kind": "attr", "xmlAttr": "PrintType", "defaultValue": "BrowsedRecords" },
+          { "key": "NumCopies", "kind": "attr", "xmlAttr": "NumCopies", "defaultValue": "1" },
+          { "key": "collated", "kind": "attr", "xmlAttr": "collated", "defaultValue": "True" },
+          { "key": "AllPages", "kind": "attr", "xmlAttr": "AllPages", "defaultValue": "True" },
+          { "key": "PrintToFile", "kind": "attr", "xmlAttr": "PrintToFile", "defaultValue": "False" },
+          { "key": "PageNumberingOffset", "kind": "attr", "xmlAttr": "PageNumberingOffset", "defaultValue": "0" }
+        ],
+        "note": "attrGroup: <PrintSettings> carries the expressible print options (copies/collation/page range/print target). The machine-specific <PlatformData> CDATA blobs are intentionally NOT modeled — FM drops empty ones on paste and they cannot be authored by hand."
       }
     ],
     "hrSignature": "[ Restore: <printer name> ; With dialog: <On/Off> ]",
@@ -5796,10 +5901,20 @@
       },
       {
         "xmlElement": "PageFormat",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Page format",
         "required": false,
-        "note": "Stored page setup configuration. Attributes: PageOrientation (Portrait|Landscape), ScaleFactor, PrintableHeight, PrintableWidth, paper margins. PlatformData CDATA contains platform-specific binary data generated by FileMaker \u2014 cannot be authored by hand."
+        "fields": [
+          { "key": "PageOrientation", "kind": "attr", "xmlAttr": "PageOrientation", "defaultValue": "Portrait" },
+          { "key": "ScaleFactor", "kind": "attr", "xmlAttr": "ScaleFactor", "defaultValue": "1" },
+          { "key": "PrintableHeight", "kind": "attr", "xmlAttr": "PrintableHeight", "defaultValue": "734" },
+          { "key": "PrintableWidth", "kind": "attr", "xmlAttr": "PrintableWidth", "defaultValue": "576" },
+          { "key": "PaperTop", "kind": "attr", "xmlAttr": "PaperTop", "defaultValue": "-18" },
+          { "key": "PaperLeft", "kind": "attr", "xmlAttr": "PaperLeft", "defaultValue": "-18" },
+          { "key": "PaperBottom", "kind": "attr", "xmlAttr": "PaperBottom", "defaultValue": "774" },
+          { "key": "PaperRight", "kind": "attr", "xmlAttr": "PaperRight", "defaultValue": "594" }
+        ],
+        "note": "attrGroup: <PageFormat> carries the expressible page-setup geometry (orientation/scale/printable area/paper margins). The machine-specific <PlatformData> CDATA blobs are intentionally NOT modeled — FM drops empty ones on paste and they cannot be authored by hand."
       }
     ],
     "hrSignature": "[ Restore ; With dialog: <On/Off> ]",
@@ -5868,7 +5983,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Target",
         "required": false
       },
@@ -6072,10 +6187,13 @@
         "defaultValue": "True"
       },
       {
-        "xmlElement": "Field",
-        "type": "field",
-        "hrLabel": null,
-        "required": true
+        "xmlElement": "Restore",
+        "type": "boolean",
+        "hrLabel": "Restore",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "True",
+        "notes": "FM serializes <Restore state=...> between NoInteract and With; faithful passthrough."
       },
       {
         "xmlElement": "With",
@@ -6098,17 +6216,25 @@
         "note": "Present when With value is Calculation; shown directly as the replacement value in HR"
       },
       {
-        "xmlElement": "PerformAutoEnter",
-        "type": "boolean",
-        "hrLabel": "Skip auto-enter options",
-        "invertedHr": true,
-        "parentElement": "SerialNumbers",
-        "xmlAttr": "PerformAutoEnter",
+        "xmlElement": "SerialNumbers",
+        "type": "attrGroup",
+        "hrLabel": "Serial numbers",
         "required": false,
-        "defaultValue": "True"
+        "fields": [
+          { "key": "PerformAutoEnter", "kind": "attr", "xmlAttr": "PerformAutoEnter", "defaultValue": "True" },
+          { "key": "UpdateEntryOptions", "kind": "attr", "xmlAttr": "UpdateEntryOptions", "defaultValue": "False" },
+          { "key": "UseEntryOptions", "kind": "attr", "xmlAttr": "UseEntryOptions", "defaultValue": "True" }
+        ],
+        "notes": "Always-present <SerialNumbers> auto-enter option attrs. PerformAutoEnter is the authorable 'Skip auto-enter options' toggle; the other two are stored config, faithful passthrough."
+      },
+      {
+        "xmlElement": "Field",
+        "type": "field",
+        "hrLabel": null,
+        "required": true
       }
     ],
-    "hrSignature": "[ With dialog: <On/Off> ; <Table::Field> ; <Current contents/Serial numbers/calculation> ; Skip auto-enter options ]",
+    "hrSignature": "[ With dialog: <On/Off> ; Restore: <On/Off> ; <Current contents/Serial numbers/calculation> ; Serial numbers: PerformAutoEnter=<...> ; <Table::Field> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -6208,7 +6334,7 @@
         "hrLabel": "Error Code",
         "wrapperElement": "ErrorCode",
         "required": false,
-        "note": "Custom error code for Get(LastError); must be 5000\u20135499"
+        "note": "Custom error code for Get(LastError); must be 5000–5499"
       },
       {
         "xmlElement": "Calculation",
@@ -6216,7 +6342,7 @@
         "hrLabel": "Error Message",
         "wrapperElement": "ErrorMessage",
         "required": false,
-        "note": "Custom message for Get(LastErrorDetail); requires ErrorCode in range 5000\u20135499"
+        "note": "Custom message for Get(LastErrorDetail); requires ErrorCode in range 5000–5499"
       }
     ],
     "hrSignature": "[ Condition: <calc> ; Error Code: <calc> ; Error Message: <calc> ]",
@@ -6428,10 +6554,16 @@
       },
       {
         "xmlElement": "Profile",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Profile",
         "required": false,
-        "note": "Format attributes: FieldDelimiter (&#9; = tab), IsPredefined (\"-1\" yes), FieldNameRow (\"-1\" include field names), DataType (\"XLXE\" for Excel)"
+        "fields": [
+          { "key": "DataType", "kind": "attr", "xmlAttr": "DataType", "defaultValue": "XLXE" },
+          { "key": "FieldDelimiter", "kind": "attr", "xmlAttr": "FieldDelimiter", "defaultValue": "\t" },
+          { "key": "FieldNameRow", "kind": "attr", "xmlAttr": "FieldNameRow", "defaultValue": "-1" },
+          { "key": "IsPredefined", "kind": "attr", "xmlAttr": "IsPredefined", "defaultValue": "-1" }
+        ],
+        "note": "attrGroup: <Profile> carries the Excel export format descriptor (DataType XLXE, tab FieldDelimiter, field-name row). Same shape as Execute SQL's <Profile> attrGroup; a tab delimiter is auto-quoted in the HR token (NeedsGroupQuote)."
       },
       {
         "xmlElement": "UniversalPathList",
@@ -6578,7 +6710,8 @@
         "type": "field",
         "hrLabel": "Completion Field",
         "required": false,
-        "note": "Only when FineTuneFormat state=False. Appears as sibling before <SaveAsJSONL> AND inside it."
+        "omitWhenEmpty": true,
+        "note": "Only when FineTuneFormat state=False (Completion Field mode). omitWhenEmpty makes it present-driven so fine-tune mode (no field) emits no <Field> instead of an empty one. Appears as sibling before <SaveAsJSONL> AND inside it."
       },
       {
         "xmlElement": "Calculation",
@@ -6684,36 +6817,67 @@
         "xmlElement": "UniversalPathList",
         "type": "text",
         "hrLabel": "Output path",
+        "omitWhenEmpty": true,
         "required": false,
         "note": "Output file path. If omitted, Save Records as PDF dialog is shown."
       },
       {
         "xmlElement": "Calculation",
         "type": "calculation",
-        "hrLabel": null,
+        "hrLabel": "Saved label",
+        "omitWhenEmpty": true,
         "required": false,
         "note": "Stored label/title for the PDF specification. Only present when Restore state=True."
       },
       {
-        "xmlElement": "PDFOptions",
-        "type": "complex",
-        "hrLabel": "Records",
-        "xmlAttr": "source",
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Save to target",
+        "textMarker": true,
         "required": false,
-        "xmlEnumValues": [
-          "RecordsBeingBrowsed",
-          "CurrentRecord",
-          "BlankRecord"
-        ],
-        "hrEnumValues": {
-          "RecordsBeingBrowsed": "Records being browsed",
-          "CurrentRecord": "Current record",
-          "BlankRecord": "Blank record, as formatted / with boxes / with underlines / with placeholder text"
-        },
-        "note": "Contains Document (Title, Subject, Author, Keywords, Pages), Security, and View child elements. appearance attribute (BlankRecord only): AsFormatted | WithBoxes | WithUnderlines | WithPlaceholderText"
+        "note": "Container field or variable the PDF is saved into; present only when PDFSaveType=Target. FM marks it with a leading empty <Text/> for both the field-ref and variable forms."
+      },
+      {
+        "xmlElement": "PDFOptions",
+        "type": "attrGroup",
+        "hrLabel": "Records",
+        "required": false,
+        "note": "PDF options subtree shared with Create PDF. source (always) + appearance (BlankRecord only) attrs; PDFSaveType text child; Document/Security/View sub-groups.",
+        "fields": [
+          { "key": "source", "kind": "attr", "xmlAttr": "source", "defaultValue": "RecordsBeingBrowsed" },
+          { "key": "appearance", "kind": "attr", "xmlAttr": "appearance", "optional": true },
+          { "key": "PDFSaveType", "kind": "text", "childElement": "PDFSaveType", "defaultValue": "File" },
+          { "key": "Document", "kind": "group", "element": "Document", "fields": [
+            { "key": "Title", "kind": "calc", "childElement": "Title" },
+            { "key": "Subject", "kind": "calc", "childElement": "Subject" },
+            { "key": "Author", "kind": "calc", "childElement": "Author" },
+            { "key": "Keywords", "kind": "calc", "childElement": "Keywords" },
+            { "key": "Pages", "kind": "group", "element": "Pages", "fields": [
+              { "key": "AllPages", "kind": "attr", "xmlAttr": "AllPages", "defaultValue": "True" },
+              { "key": "NumberFrom", "kind": "calc", "childElement": "NumberFrom" },
+              { "key": "PageRange", "kind": "group", "element": "PageRange", "fields": [
+                { "key": "From", "kind": "calc", "childElement": "From" },
+                { "key": "To", "kind": "calc", "childElement": "To" }
+              ] }
+            ] }
+          ] },
+          { "key": "Security", "kind": "group", "element": "Security", "fields": [
+            { "key": "ScreenReader", "kind": "attr", "xmlAttr": "allowScreenReader", "defaultValue": "True" },
+            { "key": "Copying", "kind": "attr", "xmlAttr": "enableCopying", "defaultValue": "True" },
+            { "key": "Editing", "kind": "attr", "xmlAttr": "controlEditing", "defaultValue": "AnyExceptExtractingPages" },
+            { "key": "Printing", "kind": "attr", "xmlAttr": "controlPrinting", "defaultValue": "HighResolution" },
+            { "key": "OpenPassword", "kind": "calc", "childElement": "OpenPassword", "requireAttr": "requireOpenPassword" },
+            { "key": "EditPassword", "kind": "calc", "childElement": "ControlPassword", "requireAttr": "requireControlEditPassword" }
+          ] },
+          { "key": "View", "kind": "group", "element": "View", "fields": [
+            { "key": "Magnification", "kind": "attr", "xmlAttr": "magnification", "defaultValue": "100" },
+            { "key": "Layout", "kind": "attr", "xmlAttr": "pageLayout", "defaultValue": "SinglePage" },
+            { "key": "Show", "kind": "attr", "xmlAttr": "show", "defaultValue": "PagesPanelAndPage" }
+          ] }
+        ]
       }
     ],
-    "hrSignature": "[ <Restore> ; <Append> ; With dialog: <On/Off> ; <path> ; <source> ; Create folders: <On/Off> ]",
+    "hrSignature": "[ <Restore> ; <Append> ; With dialog: <On/Off> ; <path> ; Saved label: <calc> ; Records: source=<token>, PDFSaveType=<token>, Document=( … ), Security=( … ), View=( … ) ; Create folders: <On/Off> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -6932,9 +7096,10 @@
       {
         "xmlElement": "Calculation",
         "type": "calculation",
-        "hrLabel": null,
+        "hrLabel": "Calculation",
+        "omitWhenEmpty": true,
         "required": false,
-        "note": "Present when ContentType is Calculation or alongside Text for script text"
+        "note": "Present when ContentType is Calculation; omitted (not an empty <Calculation>) in Text mode."
       },
       {
         "xmlElement": "Text",
@@ -6945,13 +7110,22 @@
       },
       {
         "xmlElement": "Event",
-        "type": "complex",
-        "hrLabel": null,
+        "type": "attrGroup",
+        "hrLabel": "Event",
         "required": true,
-        "note": "Attributes: CopyResultToClipboard, WaitForCompletion, BringTargetToForeground, TargetType (4-char code), TargetName (app/file), id (event ID), class (event class)"
+        "fields": [
+          { "key": "CopyResultToClipboard", "kind": "attr", "xmlAttr": "CopyResultToClipboard", "defaultValue": "False" },
+          { "key": "WaitForCompletion", "kind": "attr", "xmlAttr": "WaitForCompletion", "defaultValue": "True" },
+          { "key": "BringTargetToForeground", "kind": "attr", "xmlAttr": "BringTargetToForeground", "defaultValue": "False" },
+          { "key": "TargetType", "kind": "attr", "xmlAttr": "TargetType", "defaultValue": "NUTD" },
+          { "key": "TargetName", "kind": "attr", "xmlAttr": "TargetName", "defaultValue": "<unknown>" },
+          { "key": "id", "kind": "attr", "xmlAttr": "id", "defaultValue": "dosc" },
+          { "key": "class", "kind": "attr", "xmlAttr": "class", "defaultValue": "misc" }
+        ],
+        "note": "Self-closing attribute-bearing element (attrGroup, childless → self-close)."
       }
     ],
-    "hrSignature": "[ <TargetName> ; <class> ; <id> ; <content> ]",
+    "hrSignature": "[ <content type> ; Calculation: <calc> ; Event: <attrs> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -6979,33 +7153,44 @@
         "note": "HR label differs by mode: 'With dialog' for email client, 'No dialog' for SMTP/OAuth"
       },
       {
-        "xmlElement": "Attachment",
-        "type": "complex",
+        "xmlElement": "UniversalPathList",
+        "type": "text",
         "hrLabel": "Attachment path",
+        "parentElement": "Attachment",
+        "omitWhenEmpty": true,
         "required": false,
-        "note": "Contains <UniversalPathList> with file path(s)"
+        "note": "Attachment file path(s), wrapped <Attachment><UniversalPathList>; one path per line."
       },
       {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
+        "xmlElement": "To",
+        "type": "attrGroup",
         "hrLabel": "To",
-        "wrapperElement": "To",
         "required": false,
-        "note": "UseFoundSet attribute: True collects across found set, False uses current record"
+        "fields": [
+          { "key": "useFoundSet", "kind": "attr", "xmlAttr": "UseFoundSet", "defaultValue": "False" },
+          { "key": "value", "kind": "calc", "childElement": "" }
+        ],
+        "note": "UseFoundSet=True collects addresses across found set; False uses current record"
       },
       {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
+        "xmlElement": "Cc",
+        "type": "attrGroup",
         "hrLabel": "CC",
-        "wrapperElement": "Cc",
-        "required": false
+        "required": false,
+        "fields": [
+          { "key": "useFoundSet", "kind": "attr", "xmlAttr": "UseFoundSet", "defaultValue": "False" },
+          { "key": "value", "kind": "calc", "childElement": "" }
+        ]
       },
       {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
+        "xmlElement": "Bcc",
+        "type": "attrGroup",
         "hrLabel": "BCC",
-        "wrapperElement": "Bcc",
-        "required": false
+        "required": false,
+        "fields": [
+          { "key": "useFoundSet", "kind": "attr", "xmlAttr": "UseFoundSet", "defaultValue": "False" },
+          { "key": "value", "kind": "calc", "childElement": "" }
+        ]
       },
       {
         "xmlElement": "Calculation",
@@ -7020,67 +7205,6 @@
         "hrLabel": "Message",
         "wrapperElement": "Message",
         "required": false
-      },
-      {
-        "xmlElement": "MultipleEmails",
-        "type": "boolean",
-        "hrLabel": null,
-        "xmlAttr": "state",
-        "required": false,
-        "defaultValue": "False",
-        "note": "True sends one email per found set record"
-      },
-      {
-        "xmlElement": "SendViaSMTP",
-        "type": "boolean",
-        "hrLabel": "Send via",
-        "xmlAttr": "state",
-        "required": false,
-        "defaultValue": "False",
-        "note": "True = Send via SMTP Server"
-      },
-      {
-        "xmlElement": "SendViaOAuthAuthentication",
-        "type": "boolean",
-        "hrLabel": "Send via",
-        "xmlAttr": "state",
-        "required": false,
-        "defaultValue": "False",
-        "note": "True = Send via OAuth 2.0"
-      },
-      {
-        "xmlElement": "SMTPEncryptionType",
-        "type": "enum",
-        "hrLabel": null,
-        "xmlAttr": "type",
-        "required": false,
-        "xmlEnumValues": [
-          "SMTPEncryptionNone",
-          "SMTPEncryptionTLS",
-          "SMTPEncryptionSSL"
-        ]
-      },
-      {
-        "xmlElement": "SMTPAuthenticationType",
-        "type": "enum",
-        "hrLabel": null,
-        "xmlAttr": "type",
-        "required": false,
-        "xmlEnumValues": [
-          "SMTPAuthenticationNone",
-          "SMTPAuthenticationPlain"
-        ]
-      },
-      {
-        "xmlElement": "OAuthProvider",
-        "type": "enum",
-        "hrLabel": null,
-        "xmlAttr": "type",
-        "required": false,
-        "xmlEnumValues": [
-          "OAuthProviderGoogle",
-          "OAuthProviderMicrosoft"
-        ]
       },
       {
         "xmlElement": "Calculation",
@@ -7204,9 +7328,70 @@
         "wrapperElement": "OAuthClientSecret",
         "required": false,
         "note": "Microsoft OAuth only"
+      },
+      {
+        "xmlElement": "MultipleEmails",
+        "type": "boolean",
+        "hrLabel": null,
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "note": "True sends one email per found set record"
+      },
+      {
+        "xmlElement": "SendViaSMTP",
+        "type": "boolean",
+        "hrLabel": "Send via",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "note": "True = Send via SMTP Server"
+      },
+      {
+        "xmlElement": "SendViaOAuthAuthentication",
+        "type": "boolean",
+        "hrLabel": "Send via",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "note": "True = Send via OAuth 2.0"
+      },
+      {
+        "xmlElement": "SMTPEncryptionType",
+        "type": "enum",
+        "hrLabel": null,
+        "xmlAttr": "type",
+        "required": false,
+        "xmlEnumValues": [
+          "SMTPEncryptionNone",
+          "SMTPEncryptionTLS",
+          "SMTPEncryptionSSL"
+        ]
+      },
+      {
+        "xmlElement": "SMTPAuthenticationType",
+        "type": "enum",
+        "hrLabel": null,
+        "xmlAttr": "type",
+        "required": false,
+        "xmlEnumValues": [
+          "SMTPAuthenticationNone",
+          "SMTPAuthenticationPlain"
+        ]
+      },
+      {
+        "xmlElement": "OAuthProvider",
+        "type": "enum",
+        "hrLabel": null,
+        "xmlAttr": "type",
+        "required": false,
+        "xmlEnumValues": [
+          "OAuthProviderGoogle",
+          "OAuthProviderMicrosoft"
+        ]
       }
     ],
-    "hrSignature": "[ Send via E-mail Client/SMTP Server/OAuth 2.0 ; With dialog/No dialog: <On/Off> ; To: <calc> ; CC: <calc> ; BCC: <calc> ; Subject: <calc> ; Message: <calc> ; <path> ]",
+    "hrSignature": "[ Send via E-mail Client/SMTP Server/OAuth 2.0 ; With dialog/No dialog: <On/Off> ; Attachment path: <path> ; To: useFoundSet=<True/False>, value=<calc> ; CC: … ; BCC: … ; Subject: <calc> ; Message: <calc> ; <SMTP/OAuth fields> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -7319,12 +7504,12 @@
           "Deutsch (Alte Regeln)",
           "Deutsch (Neue Regeln)",
           "Schweizerdeutsch",
-          "Espa\u00f1ol",
-          "Fran\u00e7ais",
+          "Español",
+          "Français",
           "Italiano",
           "Nederlands",
-          "Portugu\u00eas (Brasil)",
-          "Portugu\u00eas (Portugal)",
+          "Português (Brasil)",
+          "Português (Portugal)",
           "Svenska"
         ],
         "note": "Special characters encoded as XML entities in XML output"
@@ -7509,19 +7694,19 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "Field",
-        "type": "field",
-        "hrLabel": "Field",
-        "required": true
-      },
-      {
         "xmlElement": "Calculation",
         "type": "calculation",
         "hrLabel": "Next value",
         "required": true
+      },
+      {
+        "xmlElement": "Field",
+        "type": "field",
+        "hrLabel": "Field",
+        "required": true
       }
     ],
-    "hrSignature": "[ <field> ; <Next value> ]",
+    "hrSignature": "[ <Next value> ; <field> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -7667,13 +7852,6 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "Calculation",
-        "type": "namedCalc",
-        "hrLabel": "Object Name",
-        "wrapperElement": "ObjectName",
-        "required": true
-      },
-      {
         "xmlElement": "Action",
         "type": "enum",
         "hrLabel": "Action",
@@ -7691,13 +7869,21 @@
       {
         "xmlElement": "Calculation",
         "type": "namedCalc",
+        "hrLabel": "Object Name",
+        "wrapperElement": "ObjectName",
+        "required": true
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
         "hrLabel": "URL",
         "wrapperElement": "URL",
+        "wrapperAttr": "custom=\"True\"",
         "required": false,
-        "note": "Only used when Action is GoToURL; omit for all other actions"
+        "note": "Only used when Action is GoToURL; omit for all other actions. FM serializes <URL custom=\"True\"> for a calculated URL."
       }
     ],
-    "hrSignature": "[ Object Name: <calc> ; Action: <GoToURL/Reset/Reload/Go Forward/Go Back> ; URL: <calc> ]",
+    "hrSignature": "[ Action: <GoToURL/Reset/Reload/Go Forward/Go Back> ; Object Name: <calc> ; URL: <calc> ]",
     "monacoSnippet": null,
     "blockPair": null,
     "status": "complete",
@@ -7817,28 +8003,73 @@
       {
         "xmlElement": "Calculation",
         "type": "namedCalc",
-        "hrLabel": null,
+        "hrLabel": "Title",
         "wrapperElement": "Title",
         "required": true
       },
       {
         "xmlElement": "Calculation",
         "type": "namedCalc",
-        "hrLabel": null,
+        "hrLabel": "Message",
         "wrapperElement": "Message",
         "required": true
       },
       {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Height",
+        "wrapperElement": "Height",
+        "required": false,
+        "note": "Custom dialog position/size — FileMaker 26+ only; optional namedCalc omits when unset so older versions round-trip."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Width",
+        "wrapperElement": "Width",
+        "required": false,
+        "note": "FM26+ only; optional."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Distance from top",
+        "wrapperElement": "DistanceFromTop",
+        "required": false,
+        "note": "FM26+ only; optional."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Distance from left",
+        "wrapperElement": "DistanceFromLeft",
+        "required": false,
+        "note": "FM26+ only; optional."
+      },
+      {
         "xmlElement": "Buttons",
-        "type": "complex",
-        "hrLabel": null,
-        "required": false
+        "type": "repeatGroup",
+        "hrLabel": "Buttons",
+        "entryElement": "Button",
+        "required": false,
+        "fields": [
+          { "key": "commit", "kind": "attr", "xmlAttr": "CommitState", "defaultValue": "False" },
+          { "key": "label", "kind": "calc" }
+        ],
+        "note": "repeatGroup: up to 3 <Button CommitState><Calculation>label</Calculation></Button>. HR entries joined by ' | '."
       },
       {
         "xmlElement": "InputFields",
-        "type": "complex",
-        "hrLabel": null,
-        "required": false
+        "type": "repeatGroup",
+        "hrLabel": "Input Fields",
+        "entryElement": "InputField",
+        "required": false,
+        "fields": [
+          { "key": "password", "kind": "attr", "xmlAttr": "UsePasswordCharacter", "defaultValue": "False" },
+          { "key": "field", "kind": "fieldOrVariable" },
+          { "key": "label", "kind": "calc", "childElement": "Label" }
+        ],
+        "note": "repeatGroup: up to 3 <InputField UsePasswordCharacter><Field/ or $var><Label><Calculation></InputField>. field = Table::Field ref or $variable; FM always serializes a <Field>."
       }
     ],
     "hrSignature": "[ \"Title\" ; \"Message\" ]",
@@ -7996,14 +8227,6 @@
     "selfClosing": false,
     "params": [
       {
-        "xmlElement": "Restore",
-        "type": "flagBoolean",
-        "hrLabel": "Restore",
-        "xmlAttr": "state",
-        "required": false,
-        "defaultValue": "True"
-      },
-      {
         "xmlElement": "NoInteract",
         "type": "boolean",
         "hrLabel": "With dialog",
@@ -8013,10 +8236,27 @@
         "invertedHr": true
       },
       {
+        "xmlElement": "Restore",
+        "type": "flagBoolean",
+        "hrLabel": "Restore",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "True"
+      },
+      {
         "xmlElement": "SortList",
-        "type": "complex",
-        "hrLabel": "Sort order",
-        "required": false
+        "type": "fieldList",
+        "hrLabel": "Sort",
+        "fields": [
+          { "key": "Maintain", "kind": "attr", "xmlAttr": "Maintain", "defaultValue": "True" },
+          { "key": "value", "kind": "attr", "xmlAttr": "value", "defaultValue": "True" }
+        ],
+        "entryElement": "Sort",
+        "fieldWrapper": "PrimaryField",
+        "entryAttr": "type",
+        "entryAttrDefault": "Ascending",
+        "required": false,
+        "notes": "fieldList (Cluster 1): ordered sort keys. Each entry <Sort type=\"Ascending|Descending|Custom\"><PrimaryField><Field/></PrimaryField></Sort>. HR token `Sort: Table::Field=Ascending, ...`. SortList Maintain/value are always-on container attributes."
       }
     ],
     "hrSignature": "[ Restore ; With dialog: <On/Off> ]",
@@ -8073,10 +8313,16 @@
       },
       {
         "xmlElement": "SpeechOptions",
-        "type": "complex",
+        "type": "attrGroup",
         "hrLabel": "Speech options",
         "required": false,
-        "note": "Attributes: WaitForCompletion (True/False), VoiceName, VoiceId, VoiceCreator. Voice values from macOS system voices (say -v ?)."
+        "fields": [
+          { "key": "WaitForCompletion", "kind": "attr", "xmlAttr": "WaitForCompletion", "defaultValue": "False" },
+          { "key": "VoiceName", "kind": "attr", "xmlAttr": "VoiceName", "optional": true },
+          { "key": "VoiceId", "kind": "attr", "xmlAttr": "VoiceId", "defaultValue": "0" },
+          { "key": "VoiceCreator", "kind": "attr", "xmlAttr": "VoiceCreator", "optional": true }
+        ],
+        "note": "attrGroup: <SpeechOptions> carries WaitForCompletion plus the chosen macOS voice (VoiceName/VoiceId/VoiceCreator from `say -v ?`). VoiceName/VoiceCreator are optional — FM drops them at the default voice and re-materializes <SpeechOptions VoiceId=\"0\" WaitForCompletion=\"False\"/> when the element is omitted."
       }
     ],
     "hrSignature": "[ <text to speak> ]",
@@ -8113,7 +8359,10 @@
         "required": false,
         "defaultValue": "True",
         "invertedHr": true,
-        "enumValues": ["On", "Off"]
+        "enumValues": [
+          "On",
+          "Off"
+        ]
       },
       {
         "xmlElement": "DontEncodeURL",
@@ -8122,7 +8371,10 @@
         "xmlAttr": "state",
         "required": false,
         "defaultValue": "False",
-        "enumValues": ["On", "Off"]
+        "enumValues": [
+          "On",
+          "Off"
+        ]
       },
       {
         "xmlElement": "SelectAll",
@@ -8131,7 +8383,10 @@
         "xmlAttr": "state",
         "required": false,
         "defaultValue": "True",
-        "enumValues": ["On", "Off"]
+        "enumValues": [
+          "On",
+          "Off"
+        ]
       },
       {
         "xmlElement": "VerifySSLCertificates",
@@ -8140,7 +8395,10 @@
         "xmlAttr": "state",
         "required": false,
         "defaultValue": "False",
-        "enumValues": ["On", "Off"]
+        "enumValues": [
+          "On",
+          "Off"
+        ]
       },
       {
         "xmlElement": "Flow",
@@ -8191,10 +8449,11 @@
       },
       {
         "xmlElement": "BaseTable",
-        "type": "tableReference",
+        "type": "reference",
         "hrLabel": "Table",
+        "wrapperAttr": "comment=\"\"",
         "required": true,
-        "note": "Current table: id=\"-1\" name=\"<Current Table>\""
+        "note": "Generic name-only reference (FM re-resolves id by name on paste). Current table: name=\"<Current Table>\""
       }
     ],
     "hrSignature": "[ With dialog: <On/Off> ; Table: <table> ]",
@@ -8286,7 +8545,7 @@
       },
       {
         "xmlElement": "Field",
-        "type": "field",
+        "type": "fieldOrVariable",
         "hrLabel": "Data source",
         "required": false,
         "note": "Dual-format: <Field table= id=0 name=/> for field, <Field></Field> + sibling <Text/> for variable. Supports repetition attribute."
@@ -8317,5 +8576,501 @@
     "blockPair": null,
     "status": "complete",
     "helpUrl": "https://help.claris.com/en/pro-help/content/write-to-data-file.html"
+  },
+  {
+    "name": "Flush Web Viewer Cookies",
+    "id": 237,
+    "category": "miscellaneous",
+    "snippetFile": "miscellaneous/Flush Web Viewer Cookies.xml",
+    "selfClosing": false,
+    "params": [],
+    "hrSignature": "Flush Web Viewer Cookies",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/flush-web-viewer-cookies.html"
+  },
+  {
+    "name": "Cancel PDF",
+    "id": 247,
+    "category": "pdf files",
+    "snippetFile": "pdf files/Cancel PDF.xml",
+    "selfClosing": false,
+    "params": [],
+    "hrSignature": "Cancel PDF",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/cancel-pdf.html"
+  },
+  {
+    "name": "Create PDF",
+    "id": 243,
+    "category": "pdf files",
+    "snippetFile": "pdf files/Create PDF.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "Restore",
+        "type": "boolean",
+        "hrLabel": "Restore",
+        "xmlAttr": "state",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "False",
+        "notes": "state=True applies the stored PDF options"
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "calculation",
+        "hrLabel": "Output File",
+        "omitWhenEmpty": true,
+        "required": false,
+        "notes": "Optional step-level output-file path calculation; FM omits it when unset."
+      },
+      {
+        "xmlElement": "Document",
+        "type": "attrGroup",
+        "hrLabel": "Document",
+        "parentElement": "CreatePDFFile",
+        "required": false,
+        "fields": [
+          { "key": "Title", "kind": "calc", "childElement": "Title" },
+          { "key": "Subject", "kind": "calc", "childElement": "Subject" },
+          { "key": "Author", "kind": "calc", "childElement": "Author" },
+          { "key": "Keywords", "kind": "calc", "childElement": "Keywords" },
+          { "key": "Pages", "kind": "group", "element": "Pages", "fields": [
+            { "key": "AllPages", "kind": "attr", "xmlAttr": "AllPages", "defaultValue": "True" },
+            { "key": "NumberFrom", "kind": "calc", "childElement": "NumberFrom" },
+            { "key": "PageRange", "kind": "group", "element": "PageRange", "fields": [
+              { "key": "From", "kind": "calc", "childElement": "From" },
+              { "key": "To", "kind": "calc", "childElement": "To" }
+            ] }
+          ] }
+        ]
+      },
+      {
+        "xmlElement": "Security",
+        "type": "attrGroup",
+        "hrLabel": "Security",
+        "parentElement": "CreatePDFFile",
+        "required": false,
+        "fields": [
+          { "key": "ScreenReader", "kind": "attr", "xmlAttr": "allowScreenReader", "defaultValue": "True" },
+          { "key": "Copying", "kind": "attr", "xmlAttr": "enableCopying", "defaultValue": "True" },
+          { "key": "Editing", "kind": "attr", "xmlAttr": "controlEditing", "defaultValue": "AnyExceptExtractingPages" },
+          { "key": "Printing", "kind": "attr", "xmlAttr": "controlPrinting", "defaultValue": "HighResolution" },
+          { "key": "OpenPassword", "kind": "calc", "childElement": "OpenPassword", "requireAttr": "requireOpenPassword" },
+          { "key": "EditPassword", "kind": "calc", "childElement": "ControlPassword", "requireAttr": "requireControlEditPassword" }
+        ]
+      },
+      {
+        "xmlElement": "View",
+        "type": "attrGroup",
+        "hrLabel": "View",
+        "parentElement": "CreatePDFFile",
+        "required": false,
+        "fields": [
+          { "key": "Magnification", "kind": "attr", "xmlAttr": "magnification", "defaultValue": "100" },
+          { "key": "Layout", "kind": "attr", "xmlAttr": "pageLayout", "defaultValue": "SinglePage" },
+          { "key": "Show", "kind": "attr", "xmlAttr": "show", "defaultValue": "PagesPanelAndPage" }
+        ]
+      }
+    ],
+    "hrSignature": "[ Restore ; Output File: <calc> ; Document: Title=<calc>, Subject=<calc>, Author=<calc>, Keywords=<calc>, Pages=( AllPages=<True|False>, NumberFrom=<calc>, PageRange=( From=<calc>, To=<calc> ) ) ; Security: ScreenReader=<True|False>, Copying=<True|False>, Editing=<token>, Printing=<token>, OpenPassword=<calc>, EditPassword=<calc> ; View: Magnification=<token>, Layout=<token>, Show=<token> ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/create-pdf.html"
+  },
+  {
+    "name": "Append PDF",
+    "id": 244,
+    "category": "pdf files",
+    "snippetFile": "pdf files/Append PDF.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "Option",
+        "type": "boolean",
+        "hrLabel": null,
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "notes": "state=True when a source password (OpenPassword) is specified"
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Source file path (PDFSaveType=File)"
+      },
+      {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Source",
+        "required": false,
+        "notes": "Source container (PDFSaveType=Target): <Field table=\"\" id=\"0\" name=\"\"/> for a field, or <Text/><Field>$variable</Field> for a variable."
+      },
+      {
+        "xmlElement": "PDFSaveType",
+        "type": "text",
+        "hrLabel": "From",
+        "parentElement": "AppendPDFFile",
+        "required": true,
+        "enumValues": [
+          "File",
+          "Target"
+        ],
+        "notes": "Source discriminator. File = path source; Target = container source (UI label \"Source\")."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Password",
+        "wrapperElement": "OpenPassword",
+        "parentElement": "AppendPDFFile",
+        "required": false,
+        "notes": "Password for an encrypted source PDF (File mode)."
+      }
+    ],
+    "hrSignature": "[ From: <File|Target> ; <path>|Source: <container> ; Password: <calc> ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/append-pdf.html"
+  },
+  {
+    "name": "Open PDF",
+    "id": 246,
+    "category": "pdf files",
+    "snippetFile": "pdf files/Open PDF.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "Option",
+        "type": "boolean",
+        "hrLabel": null,
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "notes": "state=True when a source password (OpenPassword) is specified"
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Source file path (PDFSaveType=File)"
+      },
+      {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Source",
+        "required": false,
+        "notes": "Source container (PDFSaveType=Target): <Field table=\"\" id=\"0\" name=\"\"/> for a field, or <Text/><Field>$variable</Field> for a variable."
+      },
+      {
+        "xmlElement": "PDFSaveType",
+        "type": "text",
+        "hrLabel": "From",
+        "parentElement": "OpenPDFFile",
+        "required": true,
+        "enumValues": [
+          "File",
+          "Target"
+        ],
+        "notes": "Source discriminator. File = path source; Target = container source (UI label \"Source\")."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Password",
+        "wrapperElement": "OpenPassword",
+        "parentElement": "OpenPDFFile",
+        "required": false,
+        "notes": "Password for an encrypted source PDF (both modes)."
+      }
+    ],
+    "hrSignature": "[ From: <File|Target> ; <path>|Source: <container> ; Password: <calc> ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/open-pdf.html"
+  },
+  {
+    "name": "Close PDF",
+    "id": 245,
+    "category": "pdf files",
+    "snippetFile": "pdf files/Close PDF.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "CreateDirectories",
+        "type": "boolean",
+        "hrLabel": "Create folders",
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "hrEnumValues": {
+          "True": "On",
+          "False": "Off"
+        },
+        "notes": "Create new folders in the output path (File mode)."
+      },
+      {
+        "xmlElement": "AutoOpen",
+        "type": "boolean",
+        "hrLabel": "Automatically open",
+        "xmlAttr": "state",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "False"
+      },
+      {
+        "xmlElement": "CreateEmail",
+        "type": "boolean",
+        "hrLabel": "Create email",
+        "xmlAttr": "state",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "False"
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Output file path (PDFSaveType=File)"
+      },
+      {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Target",
+        "required": false,
+        "notes": "Destination container (PDFSaveType=Target): <Field table=\"\" id=\"0\" name=\"\"/> for a field, or <Text/><Field>$variable</Field> for a variable."
+      },
+      {
+        "xmlElement": "PDFSaveType",
+        "type": "text",
+        "hrLabel": "Save to",
+        "parentElement": "ClosePDFFile",
+        "required": true,
+        "enumValues": [
+          "File",
+          "Target"
+        ],
+        "notes": "Destination discriminator. File = path; Target = container."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Filename",
+        "wrapperElement": "PDFName",
+        "parentElement": "ClosePDFFile",
+        "required": false,
+        "notes": "Stored filename when saving to a container (Target mode)."
+      }
+    ],
+    "hrSignature": "[ Save to: <File|Target> ; <path>|Target: <container> ; Filename: <calc> ; Create folders: <On/Off> ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/close-pdf.html"
+  },
+  {
+    "name": "Print PDF",
+    "id": 242,
+    "category": "pdf files",
+    "snippetFile": "pdf files/Print PDF.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "NoInteract",
+        "type": "boolean",
+        "hrLabel": "With dialog",
+        "xmlAttr": "state",
+        "invertedHr": true,
+        "required": false,
+        "defaultValue": "False",
+        "hrEnumValues": {
+          "True": "Off",
+          "False": "On"
+        }
+      },
+      {
+        "xmlElement": "Option",
+        "type": "boolean",
+        "hrLabel": null,
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "notes": "state=True when stored print options (PrintSettings) are attached"
+      },
+      {
+        "xmlElement": "UsePrintOptionsFromEnabled",
+        "type": "boolean",
+        "hrLabel": null,
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "notes": "state=True reads print options from a container (PrintSettings/UsePrintOptionsFrom)"
+      },
+      {
+        "xmlElement": "SavePrintOptionsToEnabled",
+        "type": "boolean",
+        "hrLabel": null,
+        "xmlAttr": "state",
+        "required": false,
+        "defaultValue": "False",
+        "notes": "state=True saves print options to a container (PrintSettings/SavePrintOptionsTo)"
+      },
+      {
+        "xmlElement": "Restore",
+        "type": "boolean",
+        "hrLabel": "Restore",
+        "xmlAttr": "state",
+        "flagStyle": true,
+        "required": false,
+        "defaultValue": "False"
+      },
+      {
+        "xmlElement": "UniversalPathList",
+        "type": "text",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Source PDF path (File mode); Source-mode container ref not captured."
+      },
+      {
+        "xmlElement": "PrintSettings",
+        "type": "complex",
+        "hrLabel": null,
+        "required": false,
+        "notes": "Stored print configuration (same shape as the native Print step). Carries SavePrintOptionsTo/UsePrintOptionsFrom (Field), Password (Calculation), SaveType, and machine-specific PlatformData CDATA — cannot be authored by hand."
+      }
+    ],
+    "hrSignature": "[ <Restore> ; With dialog: <On/Off> ; <path> ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/print-pdf.html"
+  },
+  {
+    "name": "Insert Image Caption",
+    "id": 241,
+    "category": "artificial intelligence",
+    "snippetFile": "artificial intelligence/Insert Image Caption.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "Field",
+        "type": "fieldOrVariable",
+        "hrLabel": "Target",
+        "required": false,
+        "notes": "Target sibling outside LLMEmbedding: <Field table=\"\" id=\"0\" name=\"\"/> for a field, or <Text/><Field>$variable</Field> for a variable. When omitted, uses active field.",
+        "emitEmptyDefault": true
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Account Name",
+        "wrapperElement": "AccountName",
+        "parentElement": "LLMEmbedding",
+        "required": true
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Model",
+        "wrapperElement": "Model",
+        "parentElement": "LLMEmbedding",
+        "required": true
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Input",
+        "wrapperElement": "InputText",
+        "parentElement": "LLMEmbedding",
+        "required": true,
+        "notes": "Expression returning the image data in container format (serialized as InputText)."
+      }
+    ],
+    "hrSignature": "[ Account Name: calc ; Model: calc ; Input: calc ; Target: Table::Field| ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/insert-image-caption.html"
+  },
+  {
+    "name": "Insert Image Captions in Found Set",
+    "id": 240,
+    "category": "artificial intelligence",
+    "snippetFile": "artificial intelligence/Insert Image Captions in Found Set.xml",
+    "selfClosing": false,
+    "params": [
+      {
+        "xmlElement": "Field",
+        "type": "field",
+        "hrLabel": "Target Field",
+        "required": false,
+        "notes": "Target field as sibling outside LLMBulkEmbedding. When omitted, uses active field."
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Account Name",
+        "wrapperElement": "AccountName",
+        "parentElement": "LLMBulkEmbedding",
+        "required": true
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Model",
+        "wrapperElement": "Model",
+        "parentElement": "LLMBulkEmbedding",
+        "required": true
+      },
+      {
+        "xmlElement": "Field",
+        "type": "field",
+        "hrLabel": "Source Field",
+        "parentElement": "LLMBulkEmbedding",
+        "required": false,
+        "notes": "Source container field inside LLMBulkEmbedding"
+      },
+      {
+        "xmlElement": "Overwrite",
+        "type": "flagElement",
+        "hrLabel": "Replace target contents",
+        "parentElement": "LLMBulkEmbedding",
+        "required": false,
+        "notes": "Flag element: present = on, absent = off"
+      },
+      {
+        "xmlElement": "ContinueOnError",
+        "type": "flagElement",
+        "hrLabel": "Continue on error",
+        "parentElement": "LLMBulkEmbedding",
+        "required": false,
+        "notes": "Flag element: present = on, absent = off"
+      },
+      {
+        "xmlElement": "Calculation",
+        "type": "namedCalc",
+        "hrLabel": "Parameters",
+        "wrapperElement": "Parameters",
+        "parentElement": "LLMBulkEmbedding",
+        "required": false,
+        "notes": "JSON: MaxRecPerCall (1-500, default 20), MaxRetryPerWorker (1-100, default 5), RetryOnError (0|1, default 1)."
+      }
+    ],
+    "hrSignature": "[ Account Name: calc ; Model: calc ; Source Field: Table::Field ; Target Field: Table::Field ; Replace target contents ; Continue on error ; Parameters: calc ]",
+    "monacoSnippet": null,
+    "blockPair": null,
+    "status": "complete",
+    "helpUrl": "https://help.claris.com/en/pro-help/content/insert-image-captions-in-found-set.html"
   }
 ]

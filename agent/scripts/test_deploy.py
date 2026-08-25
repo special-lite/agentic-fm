@@ -39,7 +39,7 @@ RESULTS_FILE = os.path.join(DEBUG_DIR, "test-deploy-results.json")
 
 # Import deploy module
 sys.path.insert(0, HERE)
-from deploy import deploy, _load_config, _resolve_target_file, _post_json
+from deploy import deploy, _load_config, _resolve_companion_url, _resolve_target_file, _post_json
 
 
 # ---------------------------------------------------------------------------
@@ -488,7 +488,7 @@ def main():
 
     # Load config and check companion
     config = _load_config()
-    companion_url = config.get("companion_url", "http://local.hub:8765").rstrip("/")
+    companion_url = _resolve_companion_url(config)
 
     print(f"\n  Deployment Test Suite")
     print(f"  Companion: {companion_url}")

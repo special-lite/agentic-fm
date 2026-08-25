@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="243" name="Create PDF">
+    <Restore state="False"/>
+    <CreatePDFFile>
+      <Document>
+        <Pages AllPages="True">
+          <NumberFrom>
+            <Calculation><![CDATA[1]]></Calculation>
+          </NumberFrom>
+          <PageRange>
+            <From>
+              <Calculation><![CDATA[1]]></Calculation>
+            </From>
+            <To>
+              <Calculation><![CDATA[1]]></Calculation>
+            </To>
+          </PageRange>
+        </Pages>
+      </Document>
+      <Security allowScreenReader="True" enableCopying="True" controlEditing="AnyExceptExtractingPages" controlPrinting="HighResolution" requireControlEditPassword="False" requireOpenPassword="False"/>
+      <View magnification="100" pageLayout="SinglePage" show="PagesPanelAndPage"/>
+    </CreatePDFFile>
+  </Step>
+</fmxmlsnippet>
+<!-- Creates an empty PDF file in memory. Add pages with Append PDF (or Save Records as PDF), then save and close with Close PDF. Only ONE PDF may be open at a time (error 833 if one already exists). The PDF lives in memory only until saved via Close PDF; unsaved changes are lost if the session ends or the parent file closes. -->
+<!-- Restore state: "True" applies the stored PDF options shown in the script step. "False" does not restore stored options. -->
+<!-- Security attributes:
+  allowScreenReader: "True" | "False"
+  enableCopying: "True" | "False"
+  controlEditing: "AnyExceptExtractingPages" | "NotPermitted"
+  controlPrinting: "HighResolution" | "NotPermitted"
+  requireControlEditPassword: "True" | "False" — when True, add <ControlPassword><Calculation><![CDATA["password"]]></Calculation></ControlPassword>
+  requireOpenPassword: "True" | "False" — when True, add <OpenPassword><Calculation><![CDATA["password"]]></Calculation></OpenPassword>
+-->
+<!-- View attributes:
+  magnification: "25" | "50" | "75" | "100" | "125" | "150" | "200" | "400" | "800" | "FitVisible" | "FitWidth" | "FitPage" | "Default"
+  pageLayout: "SinglePage" | "Default" | "Continuous" | "Facing" | "ContinuousFacing"
+  show: "PagesPanelAndPage" | "PageOnly" | "BookmarksPanelAndPage"
+-->
+<!-- Pages AllPages attribute: "True" includes all pages. "False" uses a page range (NumberFrom and PageRange/From/To). -->
+<!-- Optional Document children (add inside <Document>; absent from the default until set): Title, Subject, Author, Keywords — each a <Calculation> wrapper, e.g. <Title><Calculation><![CDATA["title"]]></Calculation></Title>. Element names modeled from the shared PDF-options subsystem (Save Records as PDF); confirm against a configured capture. -->
+<!-- Required: none — Create PDF runs with no options selected (an empty in-memory PDF). -->
+<!-- Optional: Restore, CreatePDFFile (with Document, Security, View). -->
+<!-- New in FileMaker 26.0. This template is the AUTHORITATIVE UI-insert default (id 243), captured by adding the step via the Steps panel and copying it back. The CreatePDFFile / Document / Pages / Security / View element names AND their default values above are VERIFIED.
+     NOTE: pasting a name-only skeleton via /api/ui/script/insert yields the SAME element structure but a more minimal value baseline (Pages AllPages="False"; Security all NotPermitted/False; View Default/Default/PageOnly). The genuine UI-insert defaults shown here (AllPages="True" + range, full Security permissions, 100/SinglePage/PagesPanelAndPage) are the real user-facing defaults — see docs/SCRIPTWORKSPACE_GROUNDTRUTH.md § Method 3. -->
+<!-- See https://help.claris.com/en/pro-help/content/create-pdf.html -->

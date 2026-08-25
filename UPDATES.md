@@ -2,6 +2,23 @@
 
 ## Recent Changes
 
+### Companion config — `agent/config/companion.json` (2026-07-15, v0.8.1)
+
+**Action: optional — existing setups keep working with no changes.**
+
+The companion server's host, port, and advertise address now resolve from a single optional file, `agent/config/companion.json`.
+It is the single source of truth so the server and every client (`deploy.py`, tests) agree on one address.
+
+You only need to create it if you run the companion on a **non-default port or host**, or you want the address consolidated in one place.
+Copy `agent/config/companion.json.example` to `agent/config/companion.json`, then edit `companion.port` / `companion.advertise_host` to match your setup.
+
+**If you do nothing:** the server falls back to built-in defaults (bind `127.0.0.1`, port `8765`, advertise `local.hub`), and any existing `companion_url` in your `automation.json` is still honored during the deprecation window.
+`companion.json` is gitignored, like `automation.json`.
+
+**How to tell if it applies to you:** you previously passed `--port`, set `COMPANION_BIND_HOST`, or edited `companion_url` in `automation.json`. If none of those, you are on defaults and no action is needed.
+
+---
+
 ### Context() custom function v2 (2026-03-27)
 
 **Action required**: Update the `Context()` custom function in your FileMaker solution.

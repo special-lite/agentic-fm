@@ -4,6 +4,8 @@
 
 Maintain 100% coverage of `agent/catalogs/step-catalog-en.json`, and any other language variation thereof, for all possible FileMaker script steps. The catalog is the **canonical HR (human-readable) reference** while `snippet_examples/` files are the **canonical XML reference**. There should be a 1:1 match for each entry within a catalog file and the files found within snippet examples.
 
+Every entry must conform to the structural contract in [`CATALOG_SCHEMA.md`](./CATALOG_SCHEMA.md) — the normative definition of every `type`, key, and grammar rule the catalog uses. Consult it before adding or changing a parameter shape.
+
 ## Token Efficiency
 
 **NEVER read `step-catalog-en.json` in full.** It is large (~200KB+) and reading it wastes tokens. Always use Grep to extract only the entry being worked on:
@@ -22,7 +24,7 @@ The user either pastes both the HR format and fmxmlsnippet XML for each step or 
 2. **Extract** the `id` from the fmxmlsnippet
 3. **Map** HR labels and enum values (which often differ from XML values)
 4. **Cross-check** against snippet_examples — always explicitly present the comparison result to the user, even when there are no differences
-5. **Update catalog**: set id, add hrLabels, HR enumValues, reorder params to HR display order, set hrSignature, status→"complete"
+5. **Update catalog**: set id, add hrLabels, HR enumValues, order params to **XML serialization order** (the order FileMaker writes the child elements/attributes — this is the normative param order per `CATALOG_SCHEMA.md`, used for positional HR↔XML round-tripping; `hrSignature` separately conveys HR display order), set hrSignature, status→"complete"
 6. **Update snippet_examples** if needed: fix wrong comments, add missing structure/elements, add HR annotations to comments
 7. **Do NOT** include XML comments in code output — they are reference only
 

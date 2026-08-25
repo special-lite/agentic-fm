@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="237" name="Flush Web Viewer Cookies"/>
+</fmxmlsnippet>
+<!-- No parameters. Immediately flushes all web viewer cookies used in the FileMaker client. -->
+<!-- Clears cookies and session data stored by web viewers across ALL open FileMaker files at the application level (not scoped to one file or one web viewer object). Intended for security scenarios — clearing authenticated sessions on shared devices or when switching accounts. -->
+<!-- New in FileMaker 26.0. Authoritative capture: <Step id="237" name="Flush Web Viewer Cookies"> with no parameter elements (FM emits only the cosmetic DisableStepCollapsed, omitted here). -->
+<!-- See https://help.claris.com/en/pro-help/content/flush-web-viewer-cookies.html -->

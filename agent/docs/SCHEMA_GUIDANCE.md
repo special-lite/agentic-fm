@@ -2,6 +2,8 @@
 
 This document explains how to construct correct fmxmlsnippet XML from a step catalog entry alone. Follow it to avoid needing to read snippet_examples for standard steps.
 
+> **Normative schema:** the authoritative definition of every catalog `type`, key, and grammar rule lives in [`agent/catalogs/CATALOG_SCHEMA.md`](../catalogs/CATALOG_SCHEMA.md). This document is the OSS hand-authoring guide layered on top of that contract; when the two disagree, the contract wins. For structured types not covered in detail below — `attrGroup`, `fieldList`, `repeatGroup`, `parametersList`, `fieldOrVariable`, and the full enum key family (`enumValues`/`xmlEnumValues`/`hrEnumValues`/`enumStyle`) — see the contract.
+
 ## Step Wrapper
 
 Every script step is wrapped in `<Step id="N" enable="True">`. The `id` comes from the catalog entry's top-level `id` field. Child content depends on `selfClosing`:
@@ -269,6 +271,6 @@ Use the catalog alone when `"status": "complete"` and all param types are in thi
 Fall back to reading the snippet_examples file (path in `snippetFile`, prefixed with `agent/snippet_examples/steps/`) when:
 
 - `"status"` is `"auto"` or `"unfinished"`
-- A param has `"type": "complex"` — structure cannot be derived from schema alone
+- A param has `"type": "complex"` — the legacy escape-hatch type whose structure is not modeled in the schema (prefer the structured types `attrGroup`/`fieldList`/`repeatGroup` documented in `CATALOG_SCHEMA.md`, which **can** be derived from the entry's `fields[]`; only true `complex` params need the example)
 - `parentElement` chains are deeply nested or ambiguous in the entry
 - Behavioral constraints in snippet XML comments are needed for correctness

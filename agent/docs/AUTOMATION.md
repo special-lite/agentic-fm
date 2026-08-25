@@ -11,6 +11,30 @@ When FM Server runs in a Docker container and the companion server runs on the h
 
 This also applies to the agent itself when running inside a container (e.g. a Claude Code worktree). Any direct HTTP call the agent makes to the companion server will fail on `localhost:8765`. Use the fallback sequence: try `http://localhost:8765` first; if the connection is refused (curl exit code 7), retry with `http://host.docker.internal:8765` and use that host for all subsequent calls in the session.
 
+## Plug-in capability broker (`/health.plugin`)
+
+The companion server is also the single detection broker for the optional commercial AgenticFM plug-in. `GET /health` carries a `plugin` block so the agent makes exactly one detection call — see `agent/docs/PLUGIN_INTEGRATION.md` for the full routing model. The block reports:
+
+- `installed` — the plug-in's macOS Application Support tree is present.
+- `usable` — installed **and** the plug-in's HTTP server is reachable **and** the license is active or in trial. **This is the only field the agent routes on.**
+- `server` — `{ reachable, base, token, remote }`. The address and bearer token come from the plug-in's `preferences.json` (`remoteAccessPort` default `8766`, `remoteAccessToken`); remote access must be enabled for a stable port+token.
+- `license` — `{ status, licensed, daysRemaining?, … }` for the optional lapsed-license nudge.
+- `solutions[]` — indexed solutions (`{ key, name, catalog, files, parsed_at }`) so the agent can match the current solution before routing understanding/context.
+- `discover` — the plug-in's **self-describing endpoint suite**, brokered from its token-free `GET /api/discover`. This is the live, license-gated catalog (full suite when usable, a shrunk list + `purchaseUrl` when locked). The agent reads this to **choose** endpoints for the task rather than assuming a fixed set — the integration never hardcodes the plug-in's API surface.
+- `repoPath` / `catalogBaseUrl` / `gates` — surfaced from `preferences.json` when present (workspace binding, catalog source, the plug-in's own mutation-confirmation gates).
+
+The companion resolves `usable` by probing the plug-in's token-free `GET /api/health`, brokers `GET /api/discover`, and caches the result ~60 s. Detection only — nothing here makes any OSS feature depend on the plug-in; when the plug-in is absent or not usable the block reports it and the agent stays on the OSS path.
+
+### Optional plug-in proxy (`/plugin/<path>`)
+
+Direct plug-in access is the baseline (call `plugin.server.base` with `Authorization: Bearer <token>`). As a convenience for constrained environments — a container that can reach the companion but not the plug-in's port, or to keep a single base URL — the companion exposes a thin pass-through:
+
+```
+GET|POST {companion}/plugin/<path>   →   forwards to the plug-in's /<path>, bearer token injected
+```
+
+It returns `502` when the plug-in is not `usable`, so the agent's fallback to the OSS path stays self-enforcing. The proxy is inert until called.
+
 ## Agentic-fm scripts
 
 | Script                   | What it does                                                                                                                             |
@@ -92,3 +116,5 @@ Response shape: `{ "scriptResult": { "code": 0, "resultParameter": "<script resu
 ```
 
 Add one entry per FM file. The key must match `Get(FileName)` exactly — this is what appears in `CONTEXT.json["solution"]`. `automation.json` is gitignored; credentials are safe to store there.
+
+> **Deprecation — companion address.** The top-level `companion_url` in `automation.json` is deprecated in favour of `agent/config/companion.json` (`companion.advertise_host` + `companion.port`), which is the single source of truth for the companion address. It is still honoured during the migration window; when `companion.json` is present it wins. The per-solution `explode_xml.companion_url` (the URL **FileMaker Server** dials, e.g. `http://host.docker.internal:8765` under Docker) is unaffected — it is a distinct FMS-side reach path, not the client companion address, and stays in `automation.json`.

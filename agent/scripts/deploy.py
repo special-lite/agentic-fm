@@ -46,6 +46,11 @@ DEFAULT_CONFIG = {
 }
 
 
+COMPANION_CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "config", "companion.json"
+)
+
+
 def _load_config() -> dict:
     here = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(here, "..", "config", "automation.json")
@@ -55,6 +60,40 @@ def _load_config() -> dict:
             return {**DEFAULT_CONFIG, **cfg}
     except (OSError, ValueError):
         return DEFAULT_CONFIG.copy()
+
+
+def _load_companion_config() -> dict:
+    """Read the `companion` block from agent/config/companion.json (fail-open → {})."""
+    try:
+        with open(COMPANION_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    comp = data.get("companion") if isinstance(data, dict) else None
+    return comp if isinstance(comp, dict) else {}
+
+
+def _resolve_companion_url(config: dict) -> str:
+    """Client-reach resolution — the URL deploy dials to reach the companion.
+
+    Precedence (highest wins):
+      1. COMPANION_URL env var.
+      2. companion.json  companion.advertise_host + companion.port  (canonical).
+      3. automation.json companion_url  (legacy — honored during the deprecation window).
+      4. built-in default.
+    The users[account] layer (#76) slots in above #2 once GET /whoami lands.
+    """
+    env = os.environ.get("COMPANION_URL")
+    if env:
+        return env.rstrip("/")
+    comp = _load_companion_config()
+    host, port = comp.get("advertise_host"), comp.get("port")
+    if host and port:
+        return f"http://{host}:{port}"
+    legacy = config.get("companion_url")
+    if legacy:
+        return legacy.rstrip("/")
+    return "http://local.hub:8765"
 
 
 def _resolve_target_file(config: dict) -> str | None:
@@ -109,6 +148,35 @@ def _post_json(url: str, payload: dict, timeout: int = 15) -> dict:
             return {"success": False, "error": f"HTTP {exc.code}: {raw}"}
     except Exception as exc:
         return {"success": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Plug-in capability detection (optional commercial plug-in)
+# ---------------------------------------------------------------------------
+
+def _check_plugin(companion_url: str) -> dict:
+    """Return the plug-in capability block from the companion's /health.
+
+    The companion is the single detection broker: one GET /health tells us
+    whether the AgenticFM plug-in is *usable* (installed + reachable +
+    licensed), how to reach it (server.base + bearer token), and which
+    solutions it has indexed. Detection only — routing the deploy through the
+    plug-in's direct script-install API is a later phase. Never raises; on any
+    failure the block is empty and deploy stays on the OSS tiers.
+
+    Returns the `plugin` block, e.g.:
+      {"installed": true, "usable": true,
+       "server": {"reachable": true, "base": "http://127.0.0.1:8766", "token": "..."},
+       "license": {"status": "trial", ...}, "solutions": [...]}
+    or {} when the companion is unreachable or reports no plug-in.
+    """
+    try:
+        req = urllib.request.Request(f"{companion_url}/health", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data.get("plugin", {}) or {}
+    except Exception:
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -625,8 +693,21 @@ def deploy(
     config = _load_config()
     effective_tier = tier if tier is not None else config.get("default_tier", 1)
     effective_auto_save = auto_save if auto_save is not None else bool(config.get("auto_save", False))
-    companion_url = config.get("companion_url", "http://local.hub:8765").rstrip("/")
+    companion_url = _resolve_companion_url(config)
     fm_app_name = config.get("fm_app_name", "FileMaker Pro")
+
+    # Plug-in awareness (no hardcoded endpoints). When the plug-in is usable,
+    # the zero-keystroke install path is for the agent to pick a script-write
+    # endpoint from the plug-in's /api/discover suite (see PLUGIN_INTEGRATION.md
+    # — e.g. create new, insert steps, or read-then-fmpatch). This CLI stays the
+    # OSS clipboard fallback; surface the steer once and continue.
+    if _check_plugin(companion_url).get("usable"):
+        print(
+            "(AgenticFM plug-in is usable — for a zero-keystroke install, choose a "
+            "script-write endpoint from its /api/discover suite per "
+            "agent/docs/PLUGIN_INTEGRATION.md. Continuing on the OSS clipboard path.)",
+            file=sys.stderr,
+        )
 
     # Auto-resolve target file if not provided
     if target_file is None:

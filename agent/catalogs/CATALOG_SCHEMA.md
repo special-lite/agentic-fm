@@ -1,0 +1,269 @@
+# Step Catalog Schema Contract
+
+This document is the **normative contract** for the structure of `step-catalog-en.json` (and any language variant such as `step-catalog-<lang>.json`).
+The catalog is a machine-readable index of every FileMaker script step and the parameters each step accepts.
+Multiple independent tools consume this file to convert between human-readable (HR) script text and `fmxmlsnippet` XML, to validate scripts, and to drive editor tooling.
+This contract exists so those consumers agree on exactly what each field means.
+
+## Scope and neutrality rule
+
+This document describes **only** the catalog file and the FileMaker `fmxmlsnippet` XML it models.
+
+> It must not reference any consumer's implementation — no source files, modules, functions, endpoints, runtime behavior, or product names of any tool that reads the catalog.
+
+The rule is **symmetric**: it names neither converter, linter, editor, nor any other reader on any side.
+Each consumer documents how it uses the catalog in its own repository.
+Keeping this file implementation-neutral is what makes it a shared contract rather than one tool's documentation.
+The catalog is published from a single source-of-truth repository; downstream consumers sync the file from there and should pin to a specific revision so a schema change is a deliberate, reviewable update.
+
+## Top-level structure
+
+The file is a JSON array of **step entries**.
+Each entry is an object with the following top-level keys.
+
+| Key             | Type           | Required | Meaning                                                                                                                                                                                                 |
+| --------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | string         | yes      | The step's display name, exactly as FileMaker shows it (e.g. `"Set Variable"`, `"# (comment)"`). The primary lookup key.                                                                                |
+| `id`            | integer        | yes      | FileMaker's internal step id, emitted as `<Step id="N">`. May be `0` for steps whose id FileMaker reassigns on paste.                                                                                   |
+| `category`      | string         | yes      | The step's palette category (e.g. `"control"`, `"navigation"`). Grouping/discovery aid only.                                                                                                            |
+| `selfClosing`   | boolean        | yes      | `true` → the step emits as `<Step ... />` with no children; `false` → `<Step ...>...children...</Step>`.                                                                                                |
+| `params`        | array          | yes      | Ordered list of parameter objects. See **Parameter objects**. May be empty.                                                                                                                             |
+| `hrSignature`   | string \| null | yes      | A human-readable template showing the HR rendering of the step's parameters. A display/authoring hint, **not** a parse grammar.                                                                         |
+| `blockPair`     | object \| null | yes      | Non-null only for steps that open/close a block (If/End If, Loop/End Loop, etc.). See **Block pairs**.                                                                                                  |
+| `status`        | string         | yes      | Maintenance state of the entry: `"complete"`, `"auto"`, or `"unfinished"`. Consumers should treat only `"complete"` entries as fully reliable.                                                          |
+| `helpUrl`       | string         | yes      | Link to the step's official documentation. Reference only.                                                                                                                                              |
+| `monacoSnippet` | string \| null | yes      | Editor tab-completion template, or `null`. Editor convenience only; not part of the XML contract.                                                                                                       |
+| `snippetFile`   | string         | no       | Path, relative to the catalog-maintenance corpus, of the reference XML example the entry was derived from. **Maintenance provenance only** — not part of the runtime contract; consumers may ignore it. |
+| `notes`         | string         | no       | Free-text behavioral notes scoped to the whole step (as opposed to a single param).                                                                                                                     |
+
+### Block pairs
+
+```json
+"blockPair": { "role": "close", "partners": ["Open Transaction"] }
+```
+
+- `role` — one of `"open"`, `"middle"`, `"close"`.
+- `partners` — array of step names that complete the block.
+
+## Parameter objects
+
+`params` is an **ordered** array.
+The order is normative.
+
+> **Param ordering is XML serialization order.**
+> Parameters MUST appear in the order FileMaker serializes the corresponding child elements/attributes within the step's XML.
+> Consumers emit and read parameters positionally against this order, so it is what guarantees HR↔XML round-trip fidelity.
+> `hrSignature` separately conveys how parameters are arranged for a human reader; the two orders may differ, and `hrSignature` is never used to determine emission order.
+
+Every parameter object has these base keys:
+
+| Key          | Type           | Required | Meaning                                                                                                                                                                       |
+| ------------ | -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xmlElement` | string         | yes      | The XML element (or `Element/@attr` path) this parameter maps to. See **Element-path forms**.                                                                                 |
+| `type`       | string         | yes      | The parameter's structural classification. See **Parameter types**.                                                                                                           |
+| `hrLabel`    | string \| null | yes      | The label shown in HR (e.g. `"Target"`). `null` means the value is positional/inline with no label.                                                                           |
+| `required`   | boolean        | usually  | Whether FileMaker always serializes this element, even when empty/default. A required param round-trips even at its default value; an optional one may be omitted when unset. |
+
+### Element-path forms
+
+- `"xmlElement": "Calculation"` — a child element named `Calculation`.
+- `"xmlElement": "UniversalPathList/@type"` — the `type` **attribute** on the `UniversalPathList` element (used when one element carries both text content and an attribute that are modeled as separate params).
+
+### Common optional keys
+
+| Key              | Applies to               | Meaning                                                                                                                         |
+| ---------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `xmlAttr`        | `boolean`, `enum`, flags | Name of the attribute carrying the value (e.g. `"state"`, `"value"`, `"type"`).                                                 |
+| `defaultValue`   | most                     | The value FileMaker writes when the param is at its default. Used to decide omission and to fill required-but-empty elements.   |
+| `wrapperElement` | `namedCalc`              | The element that wraps a `<Calculation>` child (e.g. `<Count><Calculation/></Count>`).                                          |
+| `wrapperAttr`    | `namedCalc`              | A literal attribute string FileMaker places on the wrapper (e.g. `custom="True"`), emitted verbatim.                            |
+| `parentElement`  | any nested param         | The ancestor element this param nests inside (e.g. a calc that lives under `<Source>` or under a step-named container element). |
+| `notes`          | any                      | Free-text behavioral notes for this param. **Canonical key is `notes`.** See **Known inconsistencies**.                         |
+
+## Parameter types
+
+Types fall into four groups.
+Each is defined by the XML it produces.
+
+### Scalar and calculation types
+
+| `type`        | XML shape                                                        | Notes                                                                                                  |
+| ------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `boolean`     | `<El xmlAttr="True\|False"/>`                                    | Two-state attribute. `invertedHr` may flip the HR sense.                                               |
+| `enum`        | `<El xmlAttr="value"/>` or `<El>value</El>`                      | Choice value. See **The enum key family**.                                                             |
+| `calculation` | `<Calculation><![CDATA[expr]]></Calculation>`                    | A bare calculation child of the step.                                                                  |
+| `calc`        | `<Calculation><![CDATA[expr]]></Calculation>`                    | A calculation that nests inside a `parentElement` wrapper rather than sitting directly under the step. |
+| `namedCalc`   | `<Wrapper><Calculation><![CDATA[expr]]></Calculation></Wrapper>` | Calculation wrapped by `wrapperElement` (optionally with `wrapperAttr`).                               |
+| `text`        | `<El>literal text</El>`                                          | Literal element text content.                                                                          |
+
+```json
+{
+  "xmlElement": "Count",
+  "type": "namedCalc",
+  "hrLabel": "Amount (bytes)",
+  "wrapperElement": "Count"
+}
+```
+
+### Reference types
+
+These resolve to FileMaker objects.
+Field/script/layout/table identity (ids, names, table-occurrence attributes) is provided by the consumer's resolution context; this contract only specifies the element shape.
+
+| `type`                                          | XML shape                                                                                                                                     |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `field`                                         | `<Field table="TO" id="N" name="FieldName"/>`                                                                                                 |
+| `fieldOrVariable`                               | Dual form: a field ref `<Field table="" id="0" name=""/>`, **or** a variable `<Field>$var</Field>` accompanied by a leading `<Text/>` marker. |
+| `script`                                        | `<Script id="N" name="ScriptName"/>`                                                                                                          |
+| `layout`                                        | `<Layout id="N" name="LayoutName"/>` — shape may be governed by a `discriminator` (see below).                                                |
+| `tableOccurrence`, `tableRef`, `tableReference` | A `<Table ...>` reference. (Three spellings exist for historical reasons — see **Known inconsistencies**.)                                    |
+| `fileReference`                                 | `<FileReference>...</FileReference>` — a file path/reference element.                                                                         |
+| `reference`                                     | A generic name-only object reference FileMaker re-resolves by name on paste (e.g. a menu set).                                                |
+
+### Structured (container) types
+
+These model a subtree.
+Their internal grammar is given by a `fields` array and/or the entry keys below.
+See **Nested field grammar**.
+
+| `type`           | Shape                                                                                                                                                                                             | Key extra fields                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `attrGroup`      | One container element carrying a set of attributes and/or child elements.                                                                                                                         | `fields[]`                                                                                     |
+| `fieldList`      | An ordered list of field entries (each an entry element or a bare `<Field>`), optionally with a per-entry attribute.                                                                              | `entryElement`, `entryAttr`, `entryAttrDefault`, `fieldWrapper`, `fieldFixedAttrs`, `fields[]` |
+| `repeatGroup`    | A bounded, repeated entry element each carrying attributes and/or a calc.                                                                                                                         | `entryElement`, `fields[]`                                                                     |
+| `parametersList` | A `Count`-attributed container with one `<P><Calculation/></P>` child per item; `Count` must equal the child count.                                                                               | —                                                                                              |
+| `tableList`      | A container holding `<Table id="" name=""/>` children.                                                                                                                                            | `parentElement`                                                                                |
+| `findRequests`   | The find-request `<Query>` subtree. Its internal grammar is defined in the sibling `find-requests.md` spec.                                                                                       | —                                                                                              |
+| `complex`        | **Legacy/escape hatch.** Structure not modeled in the schema; the consumer must derive it from `notes` or the reference example. Prefer migrating these to `attrGroup`/`fieldList`/`repeatGroup`. |
+
+### Presence-flag types
+
+| `type`        | Meaning                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flagElement` | An empty marker element: **present = on, absent = off** (e.g. `<Overwrite/>`).                                                                          |
+| `flagBoolean` | A `boolean` whose HR rendering is flag-style — shown only when "on", omitted otherwise — but which still serializes as an attribute (`xmlAttr`) in XML. |
+
+`flagStyle: true` may also appear on an `enum` to mark that the HR shows the value only for the non-default case (and hides the default), while XML always carries the attribute.
+
+## The enum key family
+
+An `enum` (or `enum`-like) param may carry several value lists with distinct roles.
+Define them precisely:
+
+| Key             | Meaning                                                                                                                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enumValues`    | The canonical value set. **These are the literal XML values** unless `xmlEnumValues` is also present.                                                                                        |
+| `xmlEnumValues` | The literal XML values, when they differ from the human-facing `enumValues`. When present, this is authoritative for what XML carries.                                                       |
+| `hrEnumValues`  | A map from XML value → HR display string (e.g. `{ "Current": "Current Window" }`).                                                                                                           |
+| `enumStyle`     | How the value is carried. `"text"` means the value is the element's **text content** (`<El>value</El>`); absence (with an `xmlAttr`) means it is an **attribute** (`<El xmlAttr="value"/>`). |
+
+> **Authoring requirement:** `enumValues`/`xmlEnumValues` must be the exact literals FileMaker writes to XML (e.g. `LayoutNameByCalc`, not the dialog label `Layout Name by Calc`).
+> Human-facing labels belong in `hrEnumValues`/`hrLabel`, never substituted for the XML literal.
+
+```json
+{
+  "xmlElement": "Window",
+  "type": "enum",
+  "xmlAttr": "value",
+  "defaultValue": "ByName",
+  "enumValues": ["ByName", "Current"],
+  "hrEnumValues": { "ByName": "ByName", "Current": "Current Window" }
+}
+```
+
+## Nested field grammar
+
+Structured types (`attrGroup`, `fieldList`, `repeatGroup`) describe their subtree with a `fields` array.
+Each field object uses `key` + `kind`:
+
+| `kind`            | Produces                                                   | Relevant keys             |
+| ----------------- | ---------------------------------------------------------- | ------------------------- |
+| `attr`            | An attribute on the container/entry element.               | `xmlAttr`, `defaultValue` |
+| `calc`            | A `<Calculation>` child, optionally inside `childElement`. | `childElement`            |
+| `text`            | Literal text content, optionally inside `childElement`.    | `childElement`            |
+| `field`           | A `<Field>` reference.                                     | —                         |
+| `fieldOrVariable` | The dual field/variable form (see reference types).        | —                         |
+| `script`          | A `<Script>` reference.                                    | —                         |
+| `group`           | A nested child element with its own `fields[]`.            | `element`, `fields[]`     |
+
+Field-object keys:
+
+| Key            | Meaning                                                                 |
+| -------------- | ----------------------------------------------------------------------- |
+| `key`          | Stable identifier for the field (HR token name / internal handle).      |
+| `kind`         | One of the kinds above.                                                 |
+| `xmlAttr`      | Attribute name when `kind: "attr"`.                                     |
+| `defaultValue` | Default for the field.                                                  |
+| `childElement` | Wrapping element for `calc`/`text` kinds (empty string = direct child). |
+| `element`      | Element name when `kind: "group"`.                                      |
+| `fields`       | Nested field list when `kind: "group"`.                                 |
+| `requireAttr`  | Marks an attribute FileMaker always serializes.                         |
+| `optional`     | Marks a field that may be absent.                                       |
+
+`fieldList`-specific entry keys:
+
+| Key                | Meaning                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `entryElement`     | The wrapper element per entry (e.g. `ExportEntry`, `Sort`). Absent → entries are bare `<Field>`.    |
+| `entryAttr`        | An attribute placed on each entry (e.g. `map`, `GroupByFieldIsSelected`, `type`).                   |
+| `entryAttrDefault` | Default for `entryAttr`.                                                                            |
+| `fieldWrapper`     | An element wrapping the `<Field>` inside each entry (e.g. `<PrimaryField><Field/></PrimaryField>`). |
+| `fieldFixedAttrs`  | Fixed attributes FileMaker always writes on each entry's `<Field>` (e.g. `FieldOptions="0"`).       |
+
+```json
+{
+  "xmlElement": "TargetFields",
+  "type": "fieldList",
+  "hrLabel": "Import fields",
+  "entryAttr": "map",
+  "entryAttrDefault": "Import",
+  "fieldFixedAttrs": [
+    {
+      "key": "FieldOptions",
+      "kind": "attr",
+      "xmlAttr": "FieldOptions",
+      "defaultValue": "0"
+    }
+  ]
+}
+```
+
+## Cross-cutting modifier keys
+
+These keys refine emission/round-trip behavior and may appear on the param types noted.
+
+| Key                | Applies to                                        | Meaning                                                                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invertedHr`       | `boolean`                                         | The HR sense is the opposite of the XML attribute value (HR "on" ↔ XML `False`).                                                                                                                                                                    |
+| `flagStyle`        | `enum`, attribute-style flags                     | HR shows the value only for the non-default case; XML always carries the attribute.                                                                                                                                                                 |
+| `omitWhenEmpty`    | reference/optional params                         | The element is **not** emitted when unset (presence-driven), rather than emitted empty.                                                                                                                                                             |
+| `emitEmptyDefault` | reference/optional params                         | The element **is** emitted even when empty/default, because FileMaker always serializes it.                                                                                                                                                         |
+| `discriminator`    | a param whose shape/presence depends on a sibling | Names the sibling param (typically an `enum`) that governs this param's form. Example: a `Layout` param discriminated by `LayoutDestination` (none for current/original, an id/name ref for a selected layout, a calc child for the by-calc forms). |
+| `textMarker`       | `fieldOrVariable`                                 | FileMaker prefixes the value with a leading empty `<Text/>` marker in both field-ref and variable forms.                                                                                                                                            |
+| `hrLabelNote`      | any                                               | Free-text note explaining a conditional HR label (e.g. the label changes with another setting).                                                                                                                                                     |
+
+## Known inconsistencies (non-normative aliases)
+
+The current catalog contains historical variants.
+These are documented so consumers tolerate them; new and updated entries should converge on the canonical form.
+
+- **`note` vs `notes`** — both appear as free-text annotation keys. **Canonical: `notes`.** Consumers should read both; authors should write `notes`.
+- **`hrValues` vs `hrEnumValues`** — `hrValues` is a rare variant; **canonical: `hrEnumValues`** (XML→HR map) for label mapping, with `enumValues` for the value set.
+- **`tableOccurrence` / `tableRef` / `tableReference`** — three type spellings for table references with the same `<Table>` shape. Consumers should treat them equivalently; no new spellings should be introduced.
+- **`notesAnimation`** and other one-off step-level note keys — step-scoped free text; treat as `notes`-equivalent prose, not structured data.
+
+A consumer encountering an **unknown** `type` or key MUST degrade gracefully: skip the parameter rather than fail the whole step.
+This keeps the contract forward-compatible — new structured types can be introduced and older consumers keep working on the steps they understand.
+
+## Changing this contract
+
+1. The schema and the catalog change together; update this document in the same revision that introduces a new `type`, key, or grammar rule.
+2. Keep the **neutrality rule** intact — describe the artifact, never a consumer.
+3. Prefer migrating `complex` params to a structured type over adding new escape hatches.
+4. Announce schema-affecting changes so downstream consumers can re-pin to the new revision.
+
+## Related specs (same directory)
+
+- `find-requests.md` — grammar for the `findRequests` `<Query>` subtree.
+- `shared-enums.md`, `window-enums.md`, `animation-enums.md`, `language-enums.md` — enumerated value references shared across steps.
+- `UPDATING_CATALOGS.md` — the maintenance workflow that keeps the catalog conformant to this contract.

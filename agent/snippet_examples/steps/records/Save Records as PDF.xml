@@ -7,7 +7,7 @@
     <Restore state="True"/>
     <AutoOpen state="False"/>
     <CreateEmail state="False"/>
-    <UniversalPathList>$output</UniversalPathList>
+    <UniversalPathList>$path</UniversalPathList>
     <Calculation><![CDATA["title"]]></Calculation>
     <PDFOptions source="RecordsBeingBrowsed">
       <Document>

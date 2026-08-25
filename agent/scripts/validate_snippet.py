@@ -18,11 +18,12 @@ Checks:
   9. Coding conventions (ASCII comparison operators, variable naming prefixes)
 
 Usage:
-  python3 validate_snippet.py [file_or_directory] [options]
+  python3 validate_snippet.py [file_or_directory ...] [options]
 
 Examples:
   python3 validate_snippet.py                          # validate all files in agent/sandbox/
   python3 validate_snippet.py agent/sandbox/MyScript   # validate a single file
+  python3 validate_snippet.py file1.xml file2.xml      # validate multiple files in one pass
   python3 validate_snippet.py --context agent/CONTEXT.json  # with reference checking
 """
 
@@ -123,10 +124,10 @@ def main():
         description="Validate fmxmlsnippet files for common errors"
     )
     parser.add_argument(
-        "path",
-        nargs="?",
+        "paths",
+        nargs="*",
         default=None,
-        help="File or directory to validate (default: agent/sandbox/)",
+        help="Files or directories to validate (default: agent/sandbox/)",
     )
     parser.add_argument(
         "--context",
@@ -147,12 +148,13 @@ def main():
     args = parser.parse_args()
 
     # Resolve paths with sensible defaults
-    target = Path(args.path) if args.path else _project_root / "agent" / "sandbox"
+    targets = [Path(p) for p in args.paths] if args.paths else [_project_root / "agent" / "sandbox"]
     context_path = Path(args.context) if args.context else None
 
-    if not target.exists():
-        print(f"Error: {target} does not exist")
-        sys.exit(1)
+    for target in targets:
+        if not target.exists():
+            print(f"Error: {target} does not exist")
+            sys.exit(1)
 
     # Build FMLint runner
     config = LintConfig()
@@ -188,15 +190,16 @@ def main():
 
     # Collect files
     files = []
-    if target.is_file():
-        files.append(target)
-    elif target.is_dir():
-        for f in sorted(target.iterdir()):
-            if f.is_file() and not f.name.startswith("."):
-                files.append(f)
+    for target in targets:
+        if target.is_file():
+            files.append(target)
+        elif target.is_dir():
+            for f in sorted(target.iterdir()):
+                if f.is_file() and not f.name.startswith("."):
+                    files.append(f)
 
     if not files:
-        print(f"No files found in {target}")
+        print(f"No files found in {', '.join(str(t) for t in targets)}")
         sys.exit(0)
 
     # Run validation via FMLint

@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<fmxmlsnippet type="FMObjectList">
+  <Step enable="True" id="245" name="Close PDF">
+    <CreateDirectories state="False"/>
+    <AutoOpen state="False"/>
+    <CreateEmail state="False"/>
+    <UniversalPathList>$path</UniversalPathList>
+    <ClosePDFFile>
+      <PDFSaveType>File</PDFSaveType>
+    </ClosePDFFile>
+  </Step>
+</fmxmlsnippet>
+<!-- Closes and saves the open PDF file to a file path, variable, or container field. -->
+<!-- PDFSaveType (the "Save to" selector): "File" saves to a file path; "Target" saves to a container field or variable. -->
+<!-- File mode: <UniversalPathList>$path</UniversalPathList> holds the output path. CreateDirectories / AutoOpen / CreateEmail apply. -->
+<!-- Target mode: replace UniversalPathList with the container ref — <Text/><Field>$variable_target</Field> (variable) or <Text/><Field table="" id="0" name=""/> (field) — set <PDFSaveType>Target</PDFSaveType>, and optionally add a filename: <ClosePDFFile><PDFName><Calculation><![CDATA["filename"]]></Calculation></PDFName></ClosePDFFile>. -->
+<!-- CreateDirectories state: "True" creates new folders in the output path. AutoOpen state: "True" opens the saved file. CreateEmail state: "True" creates a new email with the PDF attached. (All File mode.) -->
+<!-- Required: PDFSaveType + its destination (UniversalPathList in File mode, or the <Field> container in Target mode). -->
+<!-- New in FileMaker 26.0. AUTHORITATIVE — captured from developer-configured steps (id 245), both File (with output path) and Target (container + filename) modes. VERIFIED: CreateDirectories / AutoOpen / CreateEmail (independent booleans), UniversalPathList (File-mode output path), ClosePDFFile, PDFSaveType (File|Target), PDFName (filename, Target mode), and the <Text/>+<Field> container form. -->
+<!-- See https://help.claris.com/en/pro-help/content/close-pdf.html -->

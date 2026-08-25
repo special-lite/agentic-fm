@@ -408,6 +408,105 @@ def parse_conditions(obj_el):
     return result if result else None
 
 
+def parse_triggers(el):
+    """Extract script triggers directly attached to a Layout or LayoutObject element.
+
+    Returns a list of {event, script, scriptId} dicts, or None. Captures both
+    layout-level triggers (OnRecordLoad, OnLayoutKeystroke, …) and object-level
+    triggers (OnObjectEnter, OnObjectSave, …). A script wired only as a trigger
+    has no button/Perform Script caller — without recording these edges it looks
+    orphaned and gets false-flagged as dead.
+    """
+    # <ScriptTriggers> can sit at varying depths inside an object's subtree
+    # (directly under a LayoutObject, or nested beside a field's
+    # ExtendedAttributes). Walk this element's own subtree but stop at nested
+    # LayoutObject boundaries so each object claims only its own triggers — no
+    # double-counting, none missed.
+    result = []
+
+    def _collect(node):
+        for child in node:
+            if child.tag == "LayoutObject":
+                continue  # belongs to a nested object — parsed separately
+            if child.tag == "ScriptTriggers":
+                for trig in child.findall("ScriptTrigger"):
+                    script_ref = trig.find("ScriptReference")
+                    if script_ref is None:
+                        continue
+                    name = script_ref.get("name", "")
+                    if not name:
+                        continue
+                    result.append({
+                        "event": trig.get("action", ""),
+                        "script": name,
+                        "scriptId": int(script_ref.get("id", 0)),
+                    })
+            else:
+                _collect(child)
+
+    _collect(el)
+    return result if result else None
+
+
+def parse_action_script(el):
+    """Direct button-action script wired into this object.
+
+    Covers every button variant — classic <Button>, <GroupedButton> ("Grouped
+    Button" / Popover Button), etc. — whose action runs a script *directly*
+    (<action><ScriptReference>), as opposed to a Perform Script step or a script
+    trigger. parse_button only handles the classic <Button> element, so without
+    this, Grouped/Popover button scripts never reach the summary and their
+    target scripts get false-flagged as dead. Walks this element's own subtree
+    but stops at nested LayoutObject boundaries so it never steals a child
+    object's action. Returns {script, scriptId} or None.
+    """
+    result = []
+
+    def _find(node):
+        for child in node:
+            if result:
+                return
+            if child.tag == "LayoutObject":
+                continue  # belongs to a nested object — parsed separately
+            if child.tag == "action":
+                script_ref = child.find("ScriptReference")
+                if script_ref is not None and script_ref.get("name"):
+                    result.append({
+                        "script": script_ref.get("name"),
+                        "scriptId": int(script_ref.get("id", 0)),
+                    })
+                    return
+            else:
+                _find(child)
+
+    _find(el)
+    return result[0] if result else None
+
+
+def collect_child_objects(el):
+    """Nested LayoutObjects belonging directly to this object.
+
+    FileMaker nests objects inside many container types — Group, Popover Button,
+    Tab/Slide panels, GroupedButton wrappers — not just Portals and Button Bars.
+    Walk this element's subtree and return the first-level nested LayoutObjects
+    (those reachable without crossing a deeper LayoutObject boundary). Without
+    this, fields/buttons/triggers inside groups are silently dropped from the
+    summary — and therefore invisible to the cross-reference index, producing
+    false "dead object" verdicts.
+    """
+    found = []
+
+    def _collect(node):
+        for child in node:
+            if child.tag == "LayoutObject":
+                found.append(child)
+            else:
+                _collect(child)
+
+    _collect(el)
+    return found
+
+
 def parse_layout_object(obj_el):
     """Parse a single LayoutObject element into a compact dict."""
     obj_type = obj_el.get("type", "Unknown")
@@ -475,6 +574,27 @@ def parse_layout_object(obj_el):
     conditions = parse_conditions(obj_el)
     if conditions:
         summary["conditions"] = conditions
+
+    # Direct button-action script for button variants parse_button doesn't
+    # handle (Grouped Button, Popover Button, …). Guarded so classic <Button>
+    # objects — already handled above — aren't double-counted.
+    if "script" not in summary:
+        action_script = parse_action_script(obj_el)
+        if action_script:
+            summary.update(action_script)
+
+    # Object-level script triggers (OnObjectEnter, OnObjectSave, …)
+    triggers = parse_triggers(obj_el)
+    if triggers:
+        summary["triggers"] = triggers
+
+    # Nested objects inside container types not handled above (Group, Popover
+    # Button, Tab/Slide panels, GroupedButton wrappers). Portal and Button Bar
+    # manage their own children, so skip them here to avoid double-counting.
+    if obj_type not in ("Portal", "Button Bar") and "objects" not in summary:
+        children = collect_child_objects(obj_el)
+        if children:
+            summary["objects"] = [parse_layout_object(c) for c in children]
 
     return summary
 
@@ -547,6 +667,11 @@ def parse_layout(xml_path):
             if part_summary:
                 parts.append(part_summary)
         summary["parts"] = parts
+
+    # Layout-level script triggers (OnRecordLoad, OnLayoutKeystroke, …)
+    triggers = parse_triggers(root)
+    if triggers:
+        summary["triggers"] = triggers
 
     return summary
 

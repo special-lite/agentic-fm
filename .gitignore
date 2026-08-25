@@ -7,8 +7,13 @@ agent/sandbox/
 .private/
 .venv/
 .cursor/in-development/
+.claude/worktrees/
 external_tools/
 plans/
+plug-in/
+plans/converter-benchmark/
+.claude/autoresearch/
+internal/
 
 # Generated Claris documentation (copyright Claris International Inc.)
 # Run agent/docs/filemaker/fetch_docs.py to generate locally.
@@ -25,6 +30,8 @@ Prompt.md
 agent/library/
 agent/config/removals.json
 agent/config/automation.json
+agent/config/companion.json
+agent/config/modules.json
 agent/config/.autosave.json
 agent/config/.layout-prefs.json
 agent/config/.custom-instructions.md
@@ -33,6 +40,14 @@ agent/config/fmlint.config.json
 agent/config/layout-signals.json
 docker-compose.override.yml
 project.env
+tags
+.mcp.json
+.claude/settings.json
+.claude/settings.local.json
+.claude/rules
+.cursor/rules/
+sync-internal.sh
+.claude/scheduled_tasks.lock
 
 # macOS
 .DS_Store

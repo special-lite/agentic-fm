@@ -39,6 +39,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent.parent  # agent/scripts/ → project root
 
 CONTEXT_DIR = PROJECT_ROOT / "agent" / "context"
 XML_PARSED_DIR = PROJECT_ROOT / "agent" / "xml_parsed"
+CONFIG_DIR = PROJECT_ROOT / "agent" / "config"
 
 
 # ---------------------------------------------------------------------------
@@ -212,12 +213,23 @@ def build_cf_names(solution_name):
     cfs = []
     if not cf_dir.exists():
         return cfs
-    for f in cf_dir.iterdir():
-        if f.suffix == ".txt":
-            # Parse "FuncName - ID NNN.txt"
-            m = re.match(r'^(.+?)\s*-\s*ID\s+(\d+)\.txt$', f.name)
-            if m:
-                cfs.append({"name": m.group(1), "id": m.group(2), "path": f})
+    # rglob (not iterdir) so functions nested inside custom-function group
+    # folders (e.g. "Object Functions - ID 53/") are found, not missed.
+    for f in cf_dir.rglob("*.txt"):
+        # Parse "FuncName - ID NNN.txt"
+        m = re.match(r'^(.+?)\s*-\s*ID\s+(\d+)\.txt$', f.name)
+        if not m:
+            continue
+        # Skip empty / whitespace-only stubs — these are custom-function group
+        # or folder headers (and separators like "--"), not real functions.
+        # Without this, their names get counted as CFs and then flagged as
+        # dead by the unused-CF scan.
+        try:
+            if not f.read_text(encoding="utf-8").strip():
+                continue
+        except OSError:
+            continue
+        cfs.append({"name": m.group(1), "id": m.group(2), "path": f})
     return cfs
 
 
@@ -383,21 +395,24 @@ def parse_scripts(solution_name, scripts_index, to_map, cf_names):
                 ))
 
             # --- Custom function references in expressions ---
-            if "[" in line:  # Only scan lines with parameters
-                for cf in cf_name_set:
-                    # Match CF name with parens (function call) or standalone (zero-param)
-                    pattern = re.compile(
-                        r'(?<![A-Za-z0-9_])'
-                        + re.escape(cf)
-                        + r'(?:\s*\(|(?![A-Za-z0-9_(]))'
-                    )
-                    if pattern.search(line):
-                        step_type = _extract_step_type(stripped)
-                        refs.append(XRef(
-                            "script", source_name,
-                            f"line {line_num}: {step_type}",
-                            "custom_func", cf, "",
-                        ))
+            # Scan every non-blank/non-comment line: a CF call need not contain
+            # "[" (e.g. `Set Variable [ $x ; SQLFieldName ( T::F ) ]` or a bare
+            # continuation line `_x = SQLFieldName( T::F ) ;`), so no bracket
+            # prefilter — it silently dropped real references.
+            for cf in cf_name_set:
+                # Match CF name with parens (function call) or standalone (zero-param)
+                pattern = re.compile(
+                    r'(?<![A-Za-z0-9_])'
+                    + re.escape(cf)
+                    + r'(?:\s*\(|(?![A-Za-z0-9_(]))'
+                )
+                if pattern.search(line):
+                    step_type = _extract_step_type(stripped)
+                    refs.append(XRef(
+                        "script", source_name,
+                        f"line {line_num}: {step_type}",
+                        "custom_func", cf, "",
+                    ))
 
     return refs
 
@@ -497,10 +512,14 @@ def _walk_layout_json(obj, source_name, to_map, refs):
                     "field", canonical, context,
                 ))
 
-        # Script reference
-        if "script" in obj and isinstance(obj["script"], str):
+        # Script reference (button action or script trigger). Trigger dicts
+        # carry an "event" key (OnObjectSave, OnLayoutKeystroke, …); buttons do
+        # not. A trigger is a live caller — recording it stops trigger-only
+        # scripts from being false-flagged as dead.
+        if "script" in obj and isinstance(obj["script"], str) and obj["script"]:
+            location = f"trigger: {obj['event']}" if obj.get("event") else "button script"
             refs.append(XRef(
-                "layout", source_name, "button script",
+                "layout", source_name, location,
                 "script", obj["script"], "",
             ))
 
@@ -511,6 +530,38 @@ def _walk_layout_json(obj, source_name, to_map, refs):
     elif isinstance(obj, list):
         for item in obj:
             _walk_layout_json(item, source_name, to_map, refs)
+
+
+def parse_file_triggers(solution_name):
+    """Parse file-level script triggers from metadata.xml.
+
+    File triggers (OnFirstWindowOpen, OnWindowOpen, OnLastWindowClose, …) bind a
+    script to a file-level event. Such a script has no caller in any script,
+    button or layout — it is invoked by the file itself — so without this it is
+    false-flagged as dead. Emits file → script references.
+    """
+    refs = []
+    meta_path = XML_PARSED_DIR / "_" / solution_name / "metadata.xml"
+    if not meta_path.exists():
+        return refs
+    try:
+        root = ET.parse(meta_path).getroot()
+    except (ET.ParseError, OSError):
+        return refs
+
+    for trig in root.iter("ScriptTrigger"):
+        script_ref = trig.find("ScriptReference")
+        if script_ref is None:
+            continue
+        name = script_ref.get("name", "")
+        if not name:
+            continue
+        event = trig.get("action", "")
+        refs.append(XRef(
+            "file", "File", f"trigger: {event}",
+            "script", name, "",
+        ))
+    return refs
 
 
 def parse_relationships(relationships_index, to_map):
@@ -659,9 +710,30 @@ def cmd_build(solution_name):
 
     # 4. Layouts
     print("  Parsing layout summaries...")
+    layouts_dir = solution_dir / "layouts"
+    layout_summaries_missing = not layouts_dir.exists() or not any(layouts_dir.glob("*.json"))
     layout_refs = parse_layouts(solution_dir, solution_name, to_map)
     all_refs.extend(layout_refs)
     print(f"    {len(layout_refs)} references found")
+    if layout_summaries_missing:
+        print(
+            "  ⚠️  WARNING: no layout summaries found at "
+            f"context/{solution_name}/layouts/.\n"
+            "      Layout placements, button scripts and script TRIGGERS are "
+            "therefore MISSING from the xref index.\n"
+            "      Dead-object results will contain false positives "
+            "(trigger-only / layout-only objects look orphaned).\n"
+            "      Generate them first:\n"
+            f"        python3 agent/scripts/layout_to_summary.py --solution \"{solution_name}\"\n"
+            "      then rebuild the xref index.",
+            file=sys.stderr,
+        )
+
+    # 4b. File-level script triggers (metadata.xml)
+    print("  Parsing file-level triggers...")
+    file_trig_refs = parse_file_triggers(solution_name)
+    all_refs.extend(file_trig_refs)
+    print(f"    {len(file_trig_refs)} references found")
 
     # 5. Custom functions
     print("  Parsing custom functions...")
@@ -817,6 +889,27 @@ def cmd_dead(solution_name, obj_type, verbose):
     solution_dir = CONTEXT_DIR / solution_name
     xrefs = load_xref(solution_dir)
 
+    # Reliability guard: dead-object detection for scripts/fields/value_lists
+    # leans on layout references (placements, button scripts, triggers). If the
+    # xref has no layout-sourced refs, those edges are missing and the results
+    # will over-report "dead" objects. Warn loudly rather than mislead a
+    # human about to delete things.
+    if obj_type in ("scripts", "fields", "value_lists"):
+        has_layout_refs = any(ref.source_type == "layout" for ref in xrefs)
+        if not has_layout_refs:
+            print(
+                "⚠️  WARNING: xref.index contains NO layout references — "
+                f"'{obj_type}' dead results are UNRELIABLE.\n"
+                "    Layout placements, button scripts and script triggers are "
+                "missing, so trigger-only / layout-only objects will be "
+                "falsely flagged as dead.\n"
+                "    Regenerate layout summaries and rebuild before trusting "
+                "this output:\n"
+                f"      python3 agent/scripts/layout_to_summary.py --solution \"{solution_name}\"\n"
+                f"      python3 agent/scripts/trace.py build -s \"{solution_name}\"\n",
+                file=sys.stderr,
+            )
+
     # Build set of all referenced objects by type
     referenced = set()
     for ref in xrefs:
@@ -824,7 +917,7 @@ def cmd_dead(solution_name, obj_type, verbose):
             referenced.add(ref.ref_name)
 
     # Build set of all objects of this type
-    all_objects, on_layout, system_excluded = _get_all_objects(
+    all_objects, on_layout, system_excluded, module_objects = _get_all_objects(
         solution_dir, solution_name, obj_type, xrefs,
     )
 
@@ -835,9 +928,12 @@ def cmd_dead(solution_name, obj_type, verbose):
     high = []
     medium = []
     low = []
+    module = []
 
     for obj in sorted(unreferenced):
-        if obj in system_excluded:
+        if obj in module_objects:
+            module.append(obj)
+        elif obj in system_excluded:
             low.append(obj)
         elif obj in on_layout:
             medium.append(obj)
@@ -863,6 +959,12 @@ def cmd_dead(solution_name, obj_type, verbose):
             print(f"  {obj} \u2014 on layout: {layout_str}")
         print()
 
+    if module:
+        print(f"MODULE — installed tool objects, invoked externally — NOT dead ({len(module)}):")
+        for obj in module:
+            print(f"  {obj} — {module_objects[obj]}")
+        print()
+
     if verbose and low:
         print(f"LOW CONFIDENCE — excluded by heuristics ({len(low)}):")
         for obj in low:
@@ -870,9 +972,12 @@ def cmd_dead(solution_name, obj_type, verbose):
         print()
 
     total = len(all_objects)
-    print(f"Summary: {len(high)} high, {len(medium)} medium"
-          f"{f', {len(low)} low' if verbose else ''} "
-          f"unused out of {total} total {obj_type}")
+    parts = [f"{len(high)} high", f"{len(medium)} medium"]
+    if verbose:
+        parts.append(f"{len(low)} low")
+    tail = f" + {len(module)} module (live)" if module else ""
+    print(f"Summary: {', '.join(parts)} unused{tail} "
+          f"out of {total} total {obj_type}")
 
 
 def _dead_ref_type(obj_type):
@@ -887,10 +992,61 @@ def _dead_ref_type(obj_type):
     return mapping.get(obj_type, obj_type)
 
 
+def load_modules():
+    """Load installed-module definitions.
+
+    Modules are third-party tools (agentic-fm, InspectorPro, OttoFMS, …) whose
+    objects are live but have no inbound references *inside* the solution — they
+    are invoked externally (OData / fmurlscript / a companion app) or managed by
+    the module itself. We surface them separately so they are never mistaken for
+    the solution's own dead code.
+
+    Definitions come from the shipped defaults (``modules.json.example``),
+    overlaid by the developer's optional ``modules.json`` (merged by ``label``,
+    so a user file does not need to re-declare the agentic-fm default).
+    """
+    by_label = {}
+    for filename in ("modules.json.example", "modules.json"):
+        path = CONFIG_DIR / filename
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for entry in data.get("modules", []):
+            label = entry.get("label")
+            if label:
+                by_label[label] = entry  # later file (user) overrides by label
+    return list(by_label.values())
+
+
+def match_module(name, folder, modules):
+    """Return the matching module's label for (name, folder), else None.
+
+    Matching is by object NAME first (folder-independent): an exact name match
+    or a registered name prefix. ``folder_contains`` is a secondary hint for
+    tools that live in a known folder. A match on ANY signal tags the object.
+    """
+    folder_l = (folder or "").lower()
+    for mod in modules:
+        if name in mod.get("name_exact", []):
+            return mod["label"]
+        for prefix in mod.get("name_prefixes", []):
+            if prefix and name.startswith(prefix):
+                return mod["label"]
+        for token in mod.get("folder_contains", []):
+            if token and token.lower() in folder_l:
+                return mod["label"]
+    return None
+
+
 def _get_all_objects(solution_dir, solution_name, obj_type, xrefs):
-    """Get all objects, layout-only objects, and system-excluded objects."""
+    """Get all objects, plus layout-only, system-excluded and module objects."""
     system_excluded = set()
     on_layout = {}  # {obj_name: [layout_names]}
+    module_objects = {}  # {obj_name: module_label}
+    modules = load_modules()
 
     if obj_type == "fields":
         fields_index = load_fields_index(solution_dir)
@@ -898,6 +1054,10 @@ def _get_all_objects(solution_dir, solution_name, obj_type, xrefs):
         for row in fields_index:
             canonical = f"{row['table']}::{row['field']}"
             all_objects.add(canonical)
+
+            label = match_module(row["field"], "", modules) or match_module(row["table"], "", modules)
+            if label:
+                module_objects[canonical] = label
 
             # System exclusions
             if row["field"] in SYSTEM_FIELDS:
@@ -921,9 +1081,9 @@ def _get_all_objects(solution_dir, solution_name, obj_type, xrefs):
         all_objects = set()
         for row in scripts_index:
             all_objects.add(row["name"])
-            # Exclude agentic-fm scripts
-            if row.get("folder", "").startswith("agentic-fm"):
-                system_excluded.add(row["name"])
+            label = match_module(row["name"], row.get("folder", ""), modules)
+            if label:
+                module_objects[row["name"]] = label
 
         # Find scripts only on layouts
         for ref in xrefs:
@@ -934,20 +1094,35 @@ def _get_all_objects(solution_dir, solution_name, obj_type, xrefs):
 
     elif obj_type == "custom_functions":
         cf_names = build_cf_names(solution_name)
-        all_objects = {cf["name"] for cf in cf_names}
+        all_objects = set()
+        for cf in cf_names:
+            all_objects.add(cf["name"])
+            label = match_module(cf["name"], "", modules)
+            if label:
+                module_objects[cf["name"]] = label
 
     elif obj_type == "layouts":
         layouts_index = load_layouts_index(solution_dir)
-        all_objects = {row["name"] for row in layouts_index}
+        all_objects = set()
+        for row in layouts_index:
+            all_objects.add(row["name"])
+            label = match_module(row["name"], row.get("folder", ""), modules)
+            if label:
+                module_objects[row["name"]] = label
 
     elif obj_type == "value_lists":
         vl_index = load_value_lists_index(solution_dir)
-        all_objects = {row["name"] for row in vl_index}
+        all_objects = set()
+        for row in vl_index:
+            all_objects.add(row["name"])
+            label = match_module(row["name"], "", modules)
+            if label:
+                module_objects[row["name"]] = label
 
     else:
         all_objects = set()
 
-    return all_objects, on_layout, system_excluded
+    return all_objects, on_layout, system_excluded, module_objects
 
 
 # ---------------------------------------------------------------------------

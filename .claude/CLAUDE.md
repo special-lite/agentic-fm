@@ -37,11 +37,13 @@ At the start of each new CLI/IDE session, before responding to the first prompt,
 git fetch origin --quiet 2>/dev/null; git rev-list HEAD..origin/main --count 2>/dev/null
 ```
 
-If the result is greater than `0`, pause and notify the user before proceeding:
+If the result is greater than `0`, pause and notify the user before proceeding. Before writing the notice, read the top of `UPDATES.md` (the **Recent Changes** section) and pull out any entries flagged **Action required** or **Action:** — these are the migration steps a user must (or may optionally) take after pulling, such as updating a custom function or creating a config file. Include them in your notice so the user learns not just *that* an update exists but *what changed* and what — if anything — they need to do:
 
-> **agentic-fm update available** — your clone is N commit(s) behind `origin/main`. Run `git pull --ff-only` to update before continuing, then restart your agent session. See `UPDATES.md` for details.
+> **agentic-fm update available** — your clone is N commit(s) behind `origin/main`. Run `git pull --ff-only` to update before continuing, then restart your agent session.
+>
+> This update includes: <one line per Recent Changes entry, leading with any Action-required/optional steps — e.g. "Optional: create `agent/config/companion.json` if you run a non-default companion port/host">. See `UPDATES.md` for details.
 
-Do this **once per session**, not on every prompt. If the check fails (no network, not a git repo, etc.), skip it silently and continue.
+Do not derive the "what changed" summary from git commit messages — `UPDATES.md`'s Recent Changes section is the canonical, user-facing changelog; commit messages are not. Do this **once per session**, not on every prompt. If the check fails (no network, not a git repo, etc.), skip it silently and continue.
 
 ## Environment detection
 
@@ -52,6 +54,23 @@ uname -s 2>/dev/null; command -v osascript &>/dev/null && echo "OSASCRIPT" || ec
 ```
 
 If `uname` returns `Linux` or `osascript` is not found, read `agent/docs/SANDBOXED_ENVIRONMENT.md` before proceeding. That document covers setup paths, platform limitations, and the filesystem bridge workflow for sandboxed agents.
+
+## Plug-in detection (optional enhancement)
+
+Also at session start, ask the companion server whether the optional AgenticFM plug-in is present and **usable**. The companion is the single detection broker — one call answers it. Derive its address from `agent/config/companion.json` (`companion.advertise_host` + `companion.port`), falling back to `local.hub:8765` when that file is absent, so the probe follows a changed port instead of hardcoding one:
+
+```bash
+BASE=$(python3 -c "import json;c=json.load(open('agent/config/companion.json')).get('companion',{});print(f\"{c.get('advertise_host','local.hub')}:{c.get('port',8765)}\")" 2>/dev/null || echo local.hub:8765)
+curl -s --max-time 5 "http://$BASE/health"
+```
+
+Read the `plugin` block in the response:
+
+- `plugin.usable == true` — the plug-in is installed, reachable, **and** licensed (`status ∈ {active, trial}`). Read `agent/docs/PLUGIN_INTEGRATION.md` and enter **plugin-preferred mode**: prefer the plug-in for understanding/context, authoring, validation, and install, with the OSS path as the fallback (full routing table in that doc).
+- `plugin.installed == true` but `usable == false` — installed but the license/trial has lapsed or the server is down. Stay on the **pure OSS path**. At most **once per session**, you may surface the gentle lapsed-license nudge described in `PLUGIN_INTEGRATION.md` (§10.4). Never block or degrade the OSS workflow.
+- block absent / `installed == false` / companion unreachable — pure OSS path, no nudge.
+
+Gate on `usable`, never on `installed`. Do this **once per session**, not per prompt. If the check fails for any reason, skip it silently and continue — the OSS workflow never depends on the plug-in.
 
 # Local development context
 
